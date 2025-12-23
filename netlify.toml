@@ -4,6 +4,15 @@
   functions = "functions"
 
 # =====================================================
+# NETLIFY FUNCTIONS PLUGIN
+# =====================================================
+# Automatically installs dependencies for Netlify Functions
+# =====================================================
+
+[[plugins]]
+  package = "@netlify/plugin-functions-install-core"
+
+# =====================================================
 # SECRETS SCANNING CONFIGURATION
 # =====================================================
 # Netlify's secrets scanner blocks deploys if it detects
