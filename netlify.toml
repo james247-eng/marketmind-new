@@ -19,6 +19,9 @@
   # Node environment
   NODE_ENV = "production"
 
+  # Ensure devDependencies are installed (includes Vite)
+  NPM_CONFIG_PRODUCTION = "false"
+
 # =====================================================
 # IMPORTANT SECURITY GUIDELINES
 # =====================================================
