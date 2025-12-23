@@ -1,0 +1,236 @@
+/* Features.css */
+
+.features-page {
+  background-color: white;
+}
+
+/* Hero */
+.features-hero {
+  padding: 140px 0 80px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  color: white;
+  text-align: center;
+}
+
+.features-hero-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.features-hero-content h1 {
+  font-size: 56px;
+  font-weight: 800;
+  margin-bottom: 24px;
+  letter-spacing: -0.02em;
+}
+
+.features-hero-content p {
+  font-size: 22px;
+  opacity: 0.95;
+  line-height: 1.6;
+}
+
+/* Platforms Section */
+.platforms-section {
+  padding: 80px 0;
+  background-color: white;
+}
+
+.platforms-section h2 {
+  text-align: center;
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--gray-900);
+  margin-bottom: 64px;
+}
+
+.platforms-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 24px;
+}
+
+.platform-item {
+  text-align: center;
+  padding: 32px 24px;
+  background-color: var(--gray-50);
+  border-radius: 16px;
+  border: 1px solid var(--gray-200);
+  transition: all 0.3s ease;
+}
+
+.platform-item:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15);
+  border-color: var(--primary);
+}
+
+.platform-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.platform-item h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 8px;
+}
+
+.platform-item p {
+  font-size: 14px;
+  color: var(--gray-700);
+}
+
+/* Detailed Features */
+.detailed-features-section {
+  padding: 120px 0;
+  background-color: var(--gray-50);
+}
+
+.detailed-feature {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 64px;
+  margin-bottom: 80px;
+  align-items: center;
+}
+
+.detailed-feature:nth-child(even) {
+  grid-template-columns: 1fr 300px;
+}
+
+.detailed-feature:nth-child(even) .feature-visual {
+  order: 2;
+}
+
+.feature-visual {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.feature-icon-large {
+  width: 160px;
+  height: 160px;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.1);
+}
+
+.feature-details h3 {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--gray-900);
+  margin-bottom: 16px;
+}
+
+.feature-description {
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--gray-700);
+  margin-bottom: 24px;
+}
+
+.feature-benefits {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feature-benefits li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  color: var(--gray-700);
+}
+
+/* CTA */
+.features-cta {
+  padding: 120px 0;
+  background-color: white;
+}
+
+.cta-box {
+  max-width: 700px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 64px 48px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  border-radius: 24px;
+  color: white;
+}
+
+.cta-box h2 {
+  font-size: 40px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.cta-box p {
+  font-size: 18px;
+  margin-bottom: 32px;
+  opacity: 0.95;
+}
+
+.btn-cta {
+  padding: 16px 40px;
+  font-size: 18px;
+  font-weight: 600;
+  background-color: white;
+  color: var(--primary);
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-cta:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .platforms-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .detailed-feature {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .detailed-feature:nth-child(even) {
+    grid-template-columns: 1fr;
+  }
+
+  .detailed-feature:nth-child(even) .feature-visual {
+    order: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .features-hero-content h1 {
+    font-size: 40px;
+  }
+
+  .platforms-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cta-box {
+    padding: 48px 32px;
+  }
+
+  .cta-box h2 {
+    font-size: 32px;
+  }
+}

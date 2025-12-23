@@ -1,0 +1,22 @@
+/* ContentHistory.css */
+.empty-state {
+  text-align: center;
+  padding: 80px 32px;
+  background-color: white;
+  border-radius: 12px;
+  border: 2px dashed var(--gray-300); 
+}
+.empty-icon {
+  color: var(--gray-700);
+  margin-bottom: 24px;
+}
+
+.empty-state h2 {
+  font-size: 24px;
+  color: var(--gray-900);
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  color: var(--gray-700);
+}

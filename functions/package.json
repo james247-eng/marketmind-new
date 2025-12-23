@@ -1,0 +1,28 @@
+{
+  "name": "market-mind-functions",
+  "version": "1.0.0",
+  "description": "Cloud Functions for Market Mind SaaS",
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint .",
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^5.0.0",
+    "@anthropic-ai/sdk": "^0.16.0",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0",
+    "firebase-functions-test": "^3.1.0"
+  },
+  "private": true
+}

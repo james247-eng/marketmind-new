@@ -1,0 +1,218 @@
+/* PostScheduler.css */
+
+.scheduler-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.scheduler-section {
+  background-color: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.scheduler-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.platform-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background-color: var(--gray-100);
+  border-radius: 8px;
+}
+
+.platform-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.platform-checkbox input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.helper-text {
+  font-size: 13px;
+  color: var(--gray-700);
+  margin-top: 8px;
+}
+
+.helper-text a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.btn-schedule {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 24px;
+  background-color: var(--primary);
+  color: white;
+  font-weight: 600;
+  font-size: 16px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.btn-schedule:hover:not(:disabled) {
+  background-color: var(--primary-dark);
+  transform: translateY(-2px);
+}
+
+.btn-schedule:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Scheduled Posts */
+.empty-schedule {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--gray-700);
+}
+
+.empty-icon {
+  color: var(--gray-700);
+  margin-bottom: 16px;
+}
+
+.scheduled-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scheduled-item {
+  padding: 16px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  background-color: var(--gray-50);
+}
+
+.post-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--gray-700);
+  font-size: 14px;
+}
+
+.post-time {
+  font-weight: 600;
+}
+
+.post-content {
+  font-size: 14px;
+  color: var(--gray-900);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.post-platforms {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.platform-tag {
+  padding: 4px 12px;
+  background-color: var(--primary);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 12px;
+  text-transform: capitalize;
+}
+
+.post-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--gray-200);
+}
+
+.status-badge {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 12px;
+  text-transform: capitalize;
+}
+
+.status-scheduled {
+  background-color: var(--gray-200);
+  color: var(--gray-700);
+}
+
+.status-published {
+  background-color: #D1FAE5;
+  color: var(--success);
+}
+
+.status-failed {
+  background-color: #FEE2E2;
+  color: var(--danger);
+}
+
+.btn-cancel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background-color: white;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel:hover {
+  background-color: var(--danger);
+  color: white;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .scheduler-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}

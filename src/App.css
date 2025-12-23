@@ -1,0 +1,50 @@
+/* App.css */
+/* Main layout styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--gray-50);
+  width: 100%;
+  position: relative;
+}
+
+.main-content {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  min-height: 100vh;
+  background-color: var(--gray-50);
+  width: calc(100% - var(--sidebar-width));
+}
+
+.content-area {
+  padding: 0 32px 32px 32px;
+}
+
+.content-area h1 {
+  font-size: 32px;
+  color: var(--gray-900);
+  margin-bottom: 8px;
+}
+
+.content-area p {
+  color: var(--gray-700);
+  font-size: 16px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .main-content {
+    margin-left: 0;
+  }
+  
+  .content-area {
+    padding: 0 16px 16px 16px;
+  }
+}

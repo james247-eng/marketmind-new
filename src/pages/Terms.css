@@ -1,0 +1,86 @@
+/* Terms.css */
+
+.terms-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.terms-header {
+  text-align: center;
+  margin-bottom: 50px;
+  padding: 40px 0;
+  border-bottom: 2px solid #E5E7EB;
+}
+
+.terms-header h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--gray-900, #111827);
+  margin-bottom: 10px;
+}
+
+.terms-header p {
+  color: var(--gray-600, #6B7280);
+  font-size: 1rem;
+}
+
+.terms-content {
+  line-height: 1.8;
+  color: #374151;
+}
+
+.terms-section {
+  margin-bottom: 40px;
+}
+
+.terms-section h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 15px;
+  margin-top: 30px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #8B5CF6;
+}
+
+.terms-section p {
+  margin-bottom: 15px;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.terms-section ul {
+  list-style: none;
+  margin-left: 0;
+  margin-bottom: 15px;
+}
+
+.terms-section ul li {
+  margin-bottom: 10px;
+  padding-left: 25px;
+  position: relative;
+}
+
+.terms-section ul li:before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #8B5CF6;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+@media (max-width: 768px) {
+  .terms-container {
+    padding: 20px 15px;
+  }
+
+  .terms-header h1 {
+    font-size: 1.8rem;
+  }
+
+  .terms-section h2 {
+    font-size: 1.2rem;
+  }
+}

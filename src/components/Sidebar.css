@@ -1,0 +1,153 @@
+/* Sidebar.css */
+
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: var(--sidebar-width);
+  height: 100vh;
+  background-color: white;
+  border-right: 1px solid var(--gray-200);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 0;
+  z-index: 1000;
+  transition: transform 0.3s ease;
+}
+
+/* Close button - hidden on desktop */
+.sidebar-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: none;
+  padding: 8px;
+  color: var(--gray-700);
+  border-radius: 6px;
+}
+
+.sidebar-close:hover {
+  background-color: var(--gray-100);
+}
+
+/* Logo Section */
+.sidebar-logo {
+  padding: 0 24px 24px 24px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.sidebar-logo h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+
+.logo-tagline {
+  font-size: 12px;
+  color: var(--gray-700);
+}
+
+/* Navigation Menu */
+.sidebar-nav {
+  flex: 1;
+  padding: 16px 12px;
+  overflow-y: auto;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  color: var(--gray-700);
+}
+
+.sidebar-item:hover {
+  background-color: var(--gray-100);
+  color: var(--primary);
+}
+
+.sidebar-item.active {
+  background-color: var(--primary);
+  color: white;
+}
+
+.sidebar-icon {
+  margin-right: 12px;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.sidebar-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Upgrade Section */
+.sidebar-upgrade {
+  padding: 16px 24px;
+  margin: 0 12px;
+  background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%);
+  border-radius: 12px;
+  color: white;
+}
+
+.upgrade-icon {
+  margin-bottom: 8px;
+}
+
+.upgrade-text {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.upgrade-subtext {
+  font-size: 12px;
+  opacity: 0.9;
+  margin-bottom: 12px;
+}
+
+.upgrade-btn {
+  width: 100%;
+  padding: 10px;
+  background-color: white;
+  color: var(--primary);
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.upgrade-btn:hover {
+  transform: translateY(-2px);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close {
+    display: block;
+  }
+
+  /* Overlay */
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+  }
+}
