@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 // Auth Pages
 import Login from './features/auth/Login';
 import Signup from './features/auth/Signup';
+import OAuthCallback from './components/OAuthCallback';
 
 // Dashboard Pages
 import Dashboard from './features/dashboard/Dashboard';
@@ -43,6 +44,9 @@ function App() {
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+
+          {/* OAuth Callback Routes for Social Media Platforms */}
+          <Route path="/auth/:platform/callback" element={<OAuthCallback />} />
 
           {/* Protected Dashboard Routes */}
           <Route 
