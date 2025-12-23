@@ -1,0 +1,51 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "functions"
+
+# =====================================================
+# SECRETS SCANNING CONFIGURATION
+# =====================================================
+# Netlify's secrets scanner blocks deploys if it detects
+# secret patterns in build output. Use this config to
+# whitelist keys that are INTENTIONALLY public-facing.
+# =====================================================
+
+[build.environment]
+  # Firebase config is intentionally client-side
+  # (no sensitive data in Firebase keys for public web apps)
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY,VITE_FIREBASE_APP_ID,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_MEASUREMENT_ID,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_PROJECT_ID,VITE_FIREBASE_STORAGE_BUCKET,VITE_PAYSTACK_PUBLIC_KEY,VITE_YOUTUBE_CLIENT_ID,VITE_FACEBOOK_APP_ID,VITE_INSTAGRAM_APP_ID,VITE_TWITTER_API_KEY,VITE_TIKTOK_CLIENT_KEY"
+
+  # Node environment
+  NODE_ENV = "production"
+
+# =====================================================
+# IMPORTANT SECURITY GUIDELINES
+# =====================================================
+# Keys that should be added to SECRETS_SCAN_OMIT_KEYS:
+# - Firebase config (inherently public for client apps)
+# - Paystack PUBLIC key only (not secret key!)
+# - OAuth Client IDs (public, non-sensitive)
+#
+# Keys that should NEVER use VITE_ prefix:
+# - PAYSTACK_SECRET_KEY (backend only)
+# - CLAUDE_API_KEY (backend only)  
+# - PERPLEXITY_API_KEY (backend only)
+# - VITE_R2_SECRET_ACCESS_KEY (remove VITE_, backend only)
+# - VITE_TWITTER_API_SECRET (remove VITE_, backend only)
+# - YOUTUBE_CLIENT_SECRET (backend only)
+# - TWITTER_BEARER_TOKEN (backend only)
+# - FACEBOOK_APP_SECRET (backend only)
+# - INSTAGRAM_APP_SECRET (backend only)
+# - TIKTOK_CLIENT_SECRET (backend only)
+# - All OAuth refresh tokens and secrets
+# =====================================================
+
+[context.production]
+  # Production build settings
+  environment = { NODE_ENV = "production" }
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
