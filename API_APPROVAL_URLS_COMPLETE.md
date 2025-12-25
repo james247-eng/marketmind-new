@@ -37,12 +37,12 @@
 
 ### Required URLs:
 
-| URL Type               | URL                                                       |
-| ---------------------- | --------------------------------------------------------- |
-| **Website**            | `https://marketmind-02.netlify.app`                       |
-| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`               |
-| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                 |
-| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/youtube/callback` |
+| URL Type               | URL                                                                    |
+| ---------------------- | ---------------------------------------------------------------------- |
+| **Website**            | `https://marketmind-02.netlify.app`                                    |
+| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                            |
+| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                              |
+| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/youtube/callback`              |
 | **Webhook URL**        | `https://marketmind-02.netlify.app/.netlify/functions/youtube-webhook` |
 
 ### Where to Add in Google Cloud Console:
@@ -78,12 +78,12 @@
 
 ### Required URLs:
 
-| URL Type               | URL                                                       |
-| ---------------------- | --------------------------------------------------------- |
-| **Website**            | `https://marketmind-02.netlify.app`                       |
-| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`               |
-| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                 |
-| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/twitter/callback` |
+| URL Type               | URL                                                                    |
+| ---------------------- | ---------------------------------------------------------------------- |
+| **Website**            | `https://marketmind-02.netlify.app`                                    |
+| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                            |
+| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                              |
+| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/twitter/callback`              |
 | **Webhook URL**        | `https://marketmind-02.netlify.app/.netlify/functions/twitter-webhook` |
 
 ### Where to Add in Twitter Developer Portal:
@@ -101,11 +101,12 @@
 ### Required URLs:
 
 | URL Type               | URL                                                        |
-| ---------------------- | ---------------------------------------------------------- |
+| ---------------------- | ---------------------------------------------------------- | --- | --------------- | ----------------------------------------------------------------------- |
 | **Website**            | `https://marketmind-02.netlify.app`                        |
 | **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                |
 | **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                  |
-| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/linkedin/callback` || **Webhook URL**        | `https://marketmind-02.netlify.app/.netlify/functions/linkedin-webhook` |
+| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/linkedin/callback` |     | **Webhook URL** | `https://marketmind-02.netlify.app/.netlify/functions/linkedin-webhook` |
+
 ### Where to Add in LinkedIn Developer Console:
 
 1. Go to: `linkedin.com/developers/apps` > Your App > Auth
@@ -118,12 +119,12 @@
 
 ### Required URLs:
 
-| URL Type               | URL                                                         |
-| ---------------------- | ----------------------------------------------------------- |
-| **Website**            | `https://marketmind-02.netlify.app`                         |
-| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                 |
-| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                   |
-| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/pinterest/callback` |
+| URL Type               | URL                                                                      |
+| ---------------------- | ------------------------------------------------------------------------ |
+| **Website**            | `https://marketmind-02.netlify.app`                                      |
+| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                              |
+| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                                |
+| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/pinterest/callback`              |
 | **Webhook URL**        | `https://marketmind-02.netlify.app/.netlify/functions/pinterest-webhook` |
 
 ### Where to Add in Pinterest Developer Console:
@@ -138,12 +139,12 @@
 
 ### Required URLs:
 
-| URL Type               | URL                                                        |
-| ---------------------- | ---------------------------------------------------------- |
-| **Website**            | `https://marketmind-02.netlify.app`                        |
-| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                |
-| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                  |
-| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/snapchat/callback` |
+| URL Type               | URL                                                                     |
+| ---------------------- | ----------------------------------------------------------------------- |
+| **Website**            | `https://marketmind-02.netlify.app`                                     |
+| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                             |
+| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                               |
+| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/snapchat/callback`              |
 | **Webhook URL**        | `https://marketmind-02.netlify.app/.netlify/functions/snapchat-webhook` |
 
 ### Where to Add in Snapchat Business Console:
@@ -158,12 +159,12 @@
 
 ### Required URLs:
 
-| URL Type               | URL                                                         |
-| ---------------------- | ----------------------------------------------------------- |
-| **Website**            | `https://marketmind-02.netlify.app`                         |
-| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                 |
-| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                   |
-| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/instagram/callback` |
+| URL Type               | URL                                                                      |
+| ---------------------- | ------------------------------------------------------------------------ |
+| **Website**            | `https://marketmind-02.netlify.app`                                      |
+| **Privacy Policy**     | `https://marketmind-02.netlify.app/privacy`                              |
+| **Terms of Service**   | `https://marketmind-02.netlify.app/terms`                                |
+| **OAuth Redirect URI** | `https://marketmind-02.netlify.app/auth/instagram/callback`              |
 | **Webhook URL**        | `https://marketmind-02.netlify.app/.netlify/functions/instagram-webhook` |
 
 **Note**: Instagram uses Meta/Facebook's developer console. Use the same setup as Meta above.
