@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
+
 // Auth Pages
 import Login from './features/auth/Login';
 import Signup from './features/auth/Signup';
@@ -25,7 +26,7 @@ import PricingPage from './pages/Pricing';
 import BlogPage from './pages/Blog';
 import PrivacyPage from './pages/Privacy';
 import TermsPage from './pages/Terms';
-
+import DataDeletion from './pages/DataDeletion';
 import './App.css';
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
           <Route path="/blog" element={<BlogPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/data-deletion" element={<DataDeletion />} />
           
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
