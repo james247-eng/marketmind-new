@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide provides step-by-step instructions to deploy Market Mind as a premium SaaS on Netlify with Firebase backend and Paystack payments.
+This guide provides step-by-step instructions to deploy Market Mind as a premium SaaS on Vercel with Firebase backend and Paystack payments.
 
 ---
 
@@ -11,7 +11,7 @@ This guide provides step-by-step instructions to deploy Market Mind as a premium
 1. [API Key Setup](#api-key-setup)
 2. [Firebase Configuration](#firebase-configuration)
 3. [Cloud Functions Deployment](#cloud-functions-deployment)
-4. [Netlify Deployment](#netlify-deployment)
+4. [Vercel Deployment](#vercel-deployment)
 5. [Environment Variables](#environment-variables)
 6. [Testing Payments](#testing-payments)
 
@@ -66,7 +66,7 @@ VITE_FIREBASE_APP_ID=YOUR_APP_ID
 3. Name it `market-mind`
 4. Copy the key
 
-**For Netlify Functions environment:**
+**For Vercel Functions environment:**
 
 ```
 CLAUDE_API_KEY=sk-ant-xxxxx
@@ -80,7 +80,7 @@ CLAUDE_API_KEY=sk-ant-xxxxx
 2. Click "Create new API key"
 3. Copy the key
 
-**For Netlify Functions environment:**
+**For Vercel Functions environment:**
 
 ```
 PERPLEXITY_API_KEY=pplx-xxxxx
@@ -250,9 +250,9 @@ firebase functions:list
 
 ---
 
-## Netlify Deployment
+## Vercel Deployment
 
-### Step 1: Push to GitHub
+### Step 1: Push to GitHub (if not already done)
 
 ```bash
 git init
@@ -263,19 +263,27 @@ git remote add origin https://github.com/YOUR_USERNAME/market-mind.git
 git push -u origin main
 ```
 
-### Step 2: Connect to Netlify
+### Step 2: Connect to Vercel
 
-1. Go to [Netlify](https://app.netlify.com/)
-2. Click "Add new site" > "Import an existing project"
-3. Choose GitHub
-4. Search `market-mind`
-5. Click "Deploy"
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard)
+2. Click "Add New..." > "Project"
+3. Click "Import Git Repository"
+4. Paste your GitHub repository URL
+5. Click "Import"
 
-### Step 3: Set Environment Variables in Netlify
+### Step 3: Configure Build Settings
 
-1. Go to "Site settings" > "Build & deploy" > "Environment"
-2. Click "Edit variables"
-3. Add all frontend variables from `.env.local`:
+Vercel automatically detects Vite projects. Verify settings:
+
+- **Framework**: Vite (auto-detected)
+- **Build Command**: `npm run build` (should be auto-filled)
+- **Output Directory**: `dist` (should be auto-filled)
+- **Install Command**: `npm install` (should be auto-filled)
+
+### Step 4: Set Environment Variables in Vercel
+
+1. Go to "Settings" > "Environment Variables"
+2. Add all frontend variables from `.env.local`:
 
 ```
 VITE_FIREBASE_API_KEY=...
@@ -290,14 +298,14 @@ VITE_R2_ACCOUNT_ID=xxxxx
 VITE_R2_BUCKET_NAME=market-mind-media
 ```
 
-4. Click "Save"
+3. Click "Save"
 
-### Step 4: Trigger Deploy
+### Step 5: Deploy
 
-1. Go to "Deployments"
-2. Click "Trigger deploy" > "Deploy site"
-3. Wait for build to complete
-4. Your site URL: `https://your-site-name.netlify.app`
+1. Vercel automatically deploys on push to main
+2. Go to "Deployments" tab to see build progress
+3. Once complete, your site URL will be shown (format: `https://your-project-name.vercel.app`)
+4. You can add a custom domain in "Settings" > "Domains"
 
 ---
 
