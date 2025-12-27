@@ -125,8 +125,8 @@ function LandingPage() {
       period: "forever",
       description: "Perfect for testing the waters",
       features: [
-        "10 AI-generated posts/month",
-        "2 social platforms",
+        "5 AI-generated posts/month",
+        "1 social platform",
         "Basic analytics",
         "Email support"
       ],
@@ -140,7 +140,7 @@ function LandingPage() {
       description: "For serious content creators",
       features: [
         "100 AI-generated posts/month",
-        "Unlimited platforms",
+        "5 social platforms",
         "Advanced analytics",
         "Priority support",
         "Custom brand voice",

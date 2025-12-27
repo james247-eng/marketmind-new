@@ -21,8 +21,8 @@ function Pricing() {
       price: { monthly: 0, yearly: 0 },
       description: "Perfect for getting started",
       features: [
-        { text: "10 AI-generated posts per month", included: true },
-        { text: "2 social platforms", included: true },
+        { text: "5 AI-generated posts per month", included: true },
+        { text: "1 social platform", included: true },
         { text: "Basic analytics", included: true },
         { text: "Email support", included: true },
         { text: "Advanced analytics", included: false },
@@ -38,7 +38,7 @@ function Pricing() {
       description: "For professionals and growing businesses",
       features: [
         { text: "100 AI-generated posts per month", included: true },
-        { text: "Unlimited social platforms", included: true },
+        { text: "5 social platforms", included: true },
         { text: "Advanced analytics & reports", included: true },
         { text: "Priority email & chat support", included: true },
         { text: "Custom brand voice training", included: true },

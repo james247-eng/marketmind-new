@@ -6,39 +6,37 @@
  * 
  * Install dependencies first:
  * cd functions
- * npm install firebase-admin firebase-functions @anthropic-ai/sdk axios
+ * npm install firebase-admin firebase-functions axios
  */
 
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const Anthropic = require('@anthropic-ai/sdk');
 const axios = require('axios');
 
 admin.initializeApp();
 const db = admin.firestore();
 
-// Initialize Anthropic (Claude)
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY,
-});
-
 // ==================== SUBSCRIPTION TIERS ====================
+// FREE tier: 5 posts/month, 1 social media link only, no research
 const TIERS = {
   free: {
-    monthlyPostLimit: 10,
-    monthlyResearchLimit: 5,
+    monthlyPostLimit: 5,
+    monthlyResearchLimit: 0,
+    maxSocialConnections: 1, // Only 1 social platform allowed
     maxFileSize: 5, // MB
-    features: ['basic-content', 'single-business']
+    features: ['basic-content']
   },
   pro: {
     monthlyPostLimit: 100,
     monthlyResearchLimit: 50,
+    maxSocialConnections: 5,
     maxFileSize: 50,
     features: ['advanced-content', 'multi-business', 'scheduling', 'youtube']
   },
   enterprise: {
     monthlyPostLimit: 'unlimited',
     monthlyResearchLimit: 'unlimited',
+    maxSocialConnections: 'unlimited',
     maxFileSize: 100,
     features: ['all', 'priority-support', 'custom-integrations']
   }
@@ -119,7 +117,7 @@ async function incrementUsage(userId, type) {
 // ==================== CLOUD FUNCTIONS ====================
 
 /**
- * Generate marketing content using Claude AI
+ * Generate marketing content using Google Gemini API (FREE)
  * Called from: ContentGenerator.jsx
  */
 exports.generateContent = functions.https.onCall(async (data, context) => {
@@ -137,17 +135,17 @@ exports.generateContent = functions.https.onCall(async (data, context) => {
     if (!canGenerate) {
       throw new functions.https.HttpsError(
         'resource-exhausted',
-        'You have reached your monthly post generation limit. Upgrade to Pro or Enterprise.'
+        'You have reached your monthly post generation limit (5 posts). Upgrade to Pro for 100/month.'
       );
     }
 
-    // Call Claude API
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: `You are a professional marketing copywriter specializing in ${businessContext}.
+    // Call Google Gemini API (FREE, 60 calls/min)
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{
+            text: `You are a professional marketing copywriter specializing in ${businessContext}.
 
 Generate compelling social media content with the following requirements:
 - Tone: ${tone}
@@ -161,8 +159,17 @@ Create posts optimized for:
 5. YouTube (title and description, engaging hook)
 
 Format as JSON with keys: twitter, linkedin, instagram, tiktok, youtube.`
-      }]
-    });
+          }]
+        }],
+        generationConfig: {
+          maxOutputTokens: 1024,
+          temperature: 0.7
+        }
+      }
+    );
+
+    const content = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!content) throw new Error('No content generated');
 
     // Increment usage
     await incrementUsage(userId, 'post');
@@ -173,15 +180,14 @@ Format as JSON with keys: twitter, linkedin, instagram, tiktok, youtube.`
       prompt,
       tone,
       businessContext,
-      content: response.content[0].text,
+      content,
       createdAt: admin.firestore.Timestamp.now(),
       type: 'generated'
     });
 
     return {
       success: true,
-      content: response.content[0].text,
-      tokensUsed: response.usage.input_tokens + response.usage.output_tokens
+      content
     };
   } catch (error) {
     console.error('Content generation error:', error);
@@ -190,7 +196,7 @@ Format as JSON with keys: twitter, linkedin, instagram, tiktok, youtube.`
 });
 
 /**
- * Conduct market research using Perplexity API
+ * Conduct market research using Google Gemini API (FREE, replaces Perplexity)
  */
 exports.conductResearch = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -206,16 +212,17 @@ exports.conductResearch = functions.https.onCall(async (data, context) => {
     if (!canResearch) {
       throw new functions.https.HttpsError(
         'resource-exhausted',
-        'You have reached your monthly research limit. Upgrade your plan.'
+        'Research not available on Free plan. Upgrade to Pro for market insights.'
       );
     }
 
-    // Call Perplexity API
-    const response = await axios.post('https://api.perplexity.ai/chat/completions', {
-      model: 'llama-3.1-sonar-small-128k-online',
-      messages: [{
-        role: 'user',
-        content: `Research current trends and insights about: "${topic}" in the ${businessNiche} industry. 
+    // Call Google Gemini API (FREE)
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{
+            text: `Research current trends and insights about: "${topic}" in the ${businessNiche} industry. 
         
 Provide:
 1. Top 5 current trends
@@ -225,12 +232,17 @@ Provide:
 5. Competitor insights
 
 Format as JSON for easy parsing.`
-      }]
-    }, {
-      headers: {
-        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`
+          }]
+        }],
+        generationConfig: {
+          maxOutputTokens: 1024,
+          temperature: 0.7
+        }
       }
-    });
+    );
+
+    const insights = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!insights) throw new Error('No insights generated');
 
     // Increment usage
     await incrementUsage(userId, 'research');
@@ -240,14 +252,14 @@ Format as JSON for easy parsing.`
       userId,
       topic,
       businessNiche,
-      research: response.data.choices[0].message.content,
+      research: insights,
       createdAt: admin.firestore.Timestamp.now(),
       type: 'research'
     });
 
     return {
       success: true,
-      insights: response.data.choices[0].message.content
+      insights
     };
   } catch (error) {
     console.error('Research error:', error);
@@ -286,4 +298,78 @@ exports.generateUploadUrl = functions.https.onCall(async (data, context) => {
   }
 });
 
-exports.TIERS = TIERS;
+/**
+ * Exchange Facebook OAuth code for access token (SECURE - backend only)
+ */
+exports.exchangeFacebookToken = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+  }
+
+  const { code, redirectUri } = data;
+
+  try {
+    // Secret key only on backend - NEVER in frontend
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/oauth/access_token`,
+      {
+        client_id: process.env.FACEBOOK_APP_ID,
+        redirect_uri: redirectUri,
+        client_secret: process.env.FACEBOOK_APP_SECRET,
+        code
+      }
+    );
+
+    const { access_token } = response.data;
+    if (!access_token) throw new Error('No access token received');
+
+    // Get user's pages
+    const pagesResponse = await axios.get(
+      `https://graph.facebook.com/v18.0/me/accounts?access_token=${access_token}`
+    );
+
+    return {
+      success: true,
+      pages: pagesResponse.data.data
+    };
+  } catch (error) {
+    console.error('Token exchange error:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});
+
+/**
+ * Post to Facebook (SECURE - backend only)
+ */
+exports.postToFacebook = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+  }
+
+  const { pageId, accessToken, content, imageUrl } = data;
+
+  try {
+    const body = {
+      message: content,
+      access_token: accessToken
+    };
+
+    if (imageUrl) {
+      body.link = imageUrl;
+    }
+
+    const response = await axios.post(
+      `https://graph.facebook.com/v18.0/${pageId}/feed`,
+      body
+    );
+
+    return {
+      success: !response.data.error,
+      postId: response.data.id,
+      error: response.data.error?.message || null
+    };
+  } catch (error) {
+    console.error('Post error:', error);
+    throw new functions.https.HttpsError('internal', error.message);
+  }
+});

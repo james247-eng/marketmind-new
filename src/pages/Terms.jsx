@@ -84,8 +84,8 @@ function Terms() {
               <p>We share data with trusted third-party providers:</p>
               <ul>
                 <li><strong>Social Media Platforms:</strong> Facebook, Instagram, Twitter, TikTok, YouTube (for posting content)</li>
-                <li><strong>Payment Processing:</strong> Stripe (for secure payment handling)</li>
-                <li><strong>AI Services:</strong> Anthropic Claude, Perplexity (for content generation)</li>
+                <li><strong>Payment Processing:</strong> Paystack (for secure payment handling)</li>
+                <li><strong>AI Services:</strong> Google Gemini (for free content generation and research)</li>
                 <li><strong>Analytics:</strong> Google Analytics (for usage tracking)</li>
                 <li><strong>Cloud Storage:</strong> Cloudflare R2 (for media storage)</li>
               </ul>

@@ -17,8 +17,8 @@ const TIERS = {
     period: '/month',
     description: 'Perfect for getting started',
     features: [
-      '10 posts/month',
-      '5 research/month',
+      '5 posts/month',
+      '1 social media platform',
       '1 business profile',
       'Basic content generation',
       'Community support'
@@ -33,7 +33,7 @@ const TIERS = {
     description: 'For growing businesses',
     features: [
       '100 posts/month',
-      '50 research/month',
+      '5 social platforms',
       'Unlimited businesses',
       'Advanced AI content',
       'Multi-platform scheduling',
@@ -51,7 +51,7 @@ const TIERS = {
     description: 'For agencies & teams',
     features: [
       'Unlimited posts',
-      'Unlimited research',
+      'Unlimited platforms',
       'Team collaboration',
       'Custom integrations',
       'Advanced analytics',

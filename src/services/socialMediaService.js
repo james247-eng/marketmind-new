@@ -1,8 +1,10 @@
 // socialMediaService.js
-// Handles OAuth connections and posting to social platforms
+// Handles OAuth connections - secure backend only
 
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './firebase';
 
 // OAuth Configuration
 const REDIRECT_URI = window.location.origin + '/accounts';
@@ -10,6 +12,7 @@ const REDIRECT_URI = window.location.origin + '/accounts';
 // =============== FACEBOOK/INSTAGRAM ===============
 
 export const connectFacebook = () => {
+  // SAFE to expose: App ID is public, used for OAuth redirect
   const clientId = import.meta.env.VITE_FACEBOOK_APP_ID || 'placeholder';
   const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish';
   
@@ -20,32 +23,29 @@ export const connectFacebook = () => {
 
 export const handleFacebookCallback = async (code, userId) => {
   try {
-    // Exchange code for access token
-    const tokenResponse = await fetch(`https://graph.facebook.com/v18.0/oauth/access_token?client_id=${import.meta.env.VITE_FACEBOOK_APP_ID}&redirect_uri=${REDIRECT_URI}&client_secret=${import.meta.env.VITE_FACEBOOK_APP_SECRET}&code=${code}`);
-    
-    const tokenData = await tokenResponse.json();
-    
-    if (!tokenData.access_token) {
-      throw new Error('Failed to get access token');
+    // NEVER put secret key here! Call backend instead
+    const exchangeToken = httpsCallable(functions, 'exchangeFacebookToken');
+    const result = await exchangeToken({
+      code,
+      redirectUri: REDIRECT_URI
+    });
+
+    if (result.data.success) {
+      // Save to Firestore
+      for (const page of result.data.pages) {
+        await addDoc(collection(db, 'socialAccounts'), {
+          userId: userId,
+          platform: 'facebook',
+          accountId: page.id,
+          accountName: page.name,
+          accessToken: page.access_token,
+          connectedAt: new Date().toISOString()
+        });
+      }
+      return { success: true };
+    } else {
+      throw new Error('Token exchange failed');
     }
-
-    // Get user's pages
-    const pagesResponse = await fetch(`https://graph.facebook.com/v18.0/me/accounts?access_token=${tokenData.access_token}`);
-    const pagesData = await pagesResponse.json();
-
-    // Save each page to Firestore
-    for (const page of pagesData.data) {
-      await addDoc(collection(db, 'socialAccounts'), {
-        userId: userId,
-        platform: 'facebook',
-        accountId: page.id,
-        accountName: page.name,
-        accessToken: page.access_token,
-        connectedAt: new Date().toISOString()
-      });
-    }
-
-    return { success: true };
   } catch (error) {
     console.error('Facebook auth error:', error);
     return { success: false, error: error.message };
@@ -54,29 +54,19 @@ export const handleFacebookCallback = async (code, userId) => {
 
 export const postToFacebook = async (pageId, accessToken, content, imageUrl) => {
   try {
-    const endpoint = `https://graph.facebook.com/v18.0/${pageId}/feed`;
-    
-    const body = {
-      message: content,
-      access_token: accessToken
-    };
-
-    if (imageUrl) {
-      body.link = imageUrl;
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+    // Call backend to post (never expose access token in frontend)
+    const postFunction = httpsCallable(functions, 'postToFacebook');
+    const result = await postFunction({
+      pageId,
+      accessToken,
+      content,
+      imageUrl
     });
-
-    const data = await response.json();
     
     return {
-      success: !data.error,
-      postId: data.id,
-      error: data.error?.message
+      success: result.data.success,
+      postId: result.data.postId,
+      error: result.data.error
     };
   } catch (error) {
     return { success: false, error: error.message };
