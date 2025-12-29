@@ -236,7 +236,8 @@ function LandingPage() {
               transition={{ duration: 0.8, delay: 0.3 }}
             >
               <img 
-                src="https://images.unsplash.com/photo-1551836022-deb4988cc6c0?w=800&q=80" 
+      //          src="https://images.unsplash.com/photo-1551836022-deb4988cc6c0?w=800&q=80" 
+                src="https://ik.imagekit.io/r98lwraye/marketmind-02.netlify.app_dashboard(Nest%20Hub%20Max)%20(1).png" 
                 alt="Happy woman using Market Mind social media marketing platform on mobile phone"
                 loading="eager"
               />

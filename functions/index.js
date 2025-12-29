@@ -283,15 +283,18 @@ exports.generateUploadUrl = functions.https.onCall(async (data, context) => {
     const subscription = await getUserSubscription(userId);
     const tier = TIERS[subscription.tier];
     
-    // In production, use AWS SDK to generate signed URL
-    // This is a placeholder - implement with actual R2 signed URL generation
-    
-    const signedUrl = `https://${process.env.VITE_R2_ACCOUNT_ID}.r2.dev/uploads/${userId}/${fileName}`;
+    // For Cloudinary, we use unsigned uploads with preset
+    // No need for signed URL - client uploads directly to Cloudinary
     
     return {
       success: true,
-      uploadUrl: signedUrl,
-      fileType
+      cloudinaryCloudName: process.env.VITE_CLOUDINARY_CLOUD_NAME,
+      uploadPreset: process.env.VITE_CLOUDINARY_UPLOAD_PRESET,
+      uploadConfig: {
+        folder: `marketmind/users/${userId}/content`,
+        tags: [`user:${userId}`, 'marketplace'],
+        eager: 'w_400,h_300,c_pad|w_800,h_600,c_pad' // Create thumbnails
+      }
     };
   } catch (error) {
     throw new functions.https.HttpsError('internal', error.message);
