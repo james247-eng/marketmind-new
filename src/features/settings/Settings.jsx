@@ -1,49 +1,112 @@
 // Settings.jsx
 // User account settings and preferences
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { logOut } from '../../services/authService';
 import { useNavigate } from 'react-router-dom';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { db, auth } from '../../services/firebase';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
-import { 
-  User, 
-  Mail, 
-  Lock, 
-  Bell, 
-  CreditCard, 
-  Shield, 
+import {
+  User,
+  Mail,
+  Lock,
+  Bell,
+  CreditCard,
+  Shield,
   LogOut as LogOutIcon,
   Save,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Loader,
 } from 'lucide-react';
 import './Settings.css';
 
+// Matches TIERS in functions/index.js
+const TIER_LIMITS = {
+  free:       { posts: 5,         research: 0,          platforms: 1 },
+  pro:        { posts: 100,       research: 50,         platforms: 5 },
+  enterprise: { posts: 'Unlimited', research: 'Unlimited', platforms: 'Unlimited' },
+};
+
 function Settings() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { currentUser } = useAuth();
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [activeTab, setActiveTab] = useState('profile');
+  const { currentUser }               = useAuth();
+  const navigate                      = useNavigate();
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+  const [success, setSuccess]         = useState('');
+  const [activeTab, setActiveTab]     = useState('profile');
 
+  // ─── Profile form ───────────────────────────────────────────────────────────
   const [profileData, setProfileData] = useState({
-    displayName: currentUser?.displayName || '',
-    email: currentUser?.email || '',
+    displayName:     currentUser?.displayName || '',
+    email:           currentUser?.email       || '',
     currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
+    newPassword:     '',
+    confirmPassword: '',
   });
 
+  // ─── Notification prefs ─────────────────────────────────────────────────────
   const [notificationSettings, setNotificationSettings] = useState({
     emailNotifications: true,
-    postReminders: true,
-    weeklyReports: false,
-    accountActivity: true
+    postReminders:      true,
+    weeklyReports:      false,
+    accountActivity:    true,
   });
+
+  // ─── Billing / usage (from Firestore) ───────────────────────────────────────
+  const [subscriptionTier, setSubscriptionTier] = useState('free');
+  const [usage, setUsage] = useState({
+    postsThisMonth:    0,
+    researchThisMonth: 0,
+  });
+  const [usageLoading, setUsageLoading] = useState(true);
+
+  // ─── Fetch real usage from Firestore ────────────────────────────────────────
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const fetchUsage = async () => {
+      setUsageLoading(true);
+      try {
+        // Get subscription tier from users collection
+        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        if (userSnap.exists()) {
+          setSubscriptionTier(userSnap.data().subscriptionTier || 'free');
+        }
+
+        // Get usage counters
+        const usageSnap = await getDoc(doc(db, 'usage', currentUser.uid));
+        if (usageSnap.exists()) {
+          const data = usageSnap.data();
+          setUsage({
+            postsThisMonth:    data.postsThisMonth    || 0,
+            researchThisMonth: data.researchThisMonth || 0,
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching usage:', err);
+      } finally {
+        setUsageLoading(false);
+      }
+    };
+
+    fetchUsage();
+  }, [currentUser]);
+
+  // Auto-clear alerts
+  useEffect(() => {
+    if (!error && !success) return;
+    const t = setTimeout(() => { setError(''); setSuccess(''); }, 5000);
+    return () => clearTimeout(t);
+  }, [error, success]);
+
+  // ─── Profile update ──────────────────────────────────────────────────────────
 
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
@@ -51,12 +114,19 @@ function Settings() {
     setSuccess('');
     setLoading(true);
 
-    // Simulate update
-    setTimeout(() => {
+    try {
+      await updateProfile(auth.currentUser, {
+        displayName: profileData.displayName,
+      });
       setSuccess('Profile updated successfully!');
+    } catch (err) {
+      setError('Failed to update profile. Please try again.');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
+
+  // ─── Password change ─────────────────────────────────────────────────────────
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -64,36 +134,49 @@ function Settings() {
     setSuccess('');
 
     if (profileData.newPassword !== profileData.confirmPassword) {
-      setError('Passwords do not match');
+      setError('Passwords do not match.');
       return;
     }
-
     if (profileData.newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+      setError('Password must be at least 6 characters.');
       return;
     }
 
     setLoading(true);
+    try {
+      // Re-authenticate before changing password
+      const credential = EmailAuthProvider.credential(
+        currentUser.email,
+        profileData.currentPassword
+      );
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      await updatePassword(auth.currentUser, profileData.newPassword);
 
-    // Simulate password change
-    setTimeout(() => {
       setSuccess('Password changed successfully!');
-      setProfileData({
-        ...profileData,
+      setProfileData(prev => ({
+        ...prev,
         currentPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      });
+        newPassword:     '',
+        confirmPassword: '',
+      }));
+    } catch (err) {
+      if (err.code === 'auth/wrong-password') {
+        setError('Current password is incorrect.');
+      } else {
+        setError('Failed to change password. Please try again.');
+      }
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
+
+  // ─── Notifications ───────────────────────────────────────────────────────────
 
   const handleNotificationToggle = (key) => {
-    setNotificationSettings({
-      ...notificationSettings,
-      [key]: !notificationSettings[key]
-    });
+    setNotificationSettings(prev => ({ ...prev, [key]: !prev[key] }));
   };
+
+  // ─── Logout ──────────────────────────────────────────────────────────────────
 
   const handleLogout = async () => {
     if (confirm('Are you sure you want to logout?')) {
@@ -102,13 +185,26 @@ function Settings() {
     }
   };
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+  const tierLimits  = TIER_LIMITS[subscriptionTier] || TIER_LIMITS.free;
+  const tierDisplay = subscriptionTier.charAt(0).toUpperCase() + subscriptionTier.slice(1);
+
+  const formatLimit = (used, limit) =>
+    limit === 'Unlimited' ? `${used} / Unlimited` : `${used} / ${limit}`;
+
+  const usagePercent = (used, limit) =>
+    limit === 'Unlimited' ? 0 : Math.min(100, Math.round((used / limit) * 100));
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   return (
     <div className="app">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <main className="main-content">
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <div className="content-area">
-          
+
           <div className="page-header">
             <div>
               <h1>Settings</h1>
@@ -117,66 +213,49 @@ function Settings() {
           </div>
 
           {error && (
-            <div className="alert alert-error">
+            <div className="alert alert-error" role="alert">
               <AlertCircle size={18} />
               {error}
             </div>
           )}
 
           {success && (
-            <div className="alert alert-success">
+            <div className="alert alert-success" role="status">
               <CheckCircle size={18} />
               {success}
             </div>
           )}
 
           <div className="settings-container">
-            
-            {/* Settings Tabs */}
+
+            {/* Tabs */}
             <div className="settings-tabs">
-              <button
-                className={`tab-item ${activeTab === 'profile' ? 'active' : ''}`}
-                onClick={() => setActiveTab('profile')}
-              >
-                <User size={20} />
-                Profile
-              </button>
-              <button
-                className={`tab-item ${activeTab === 'security' ? 'active' : ''}`}
-                onClick={() => setActiveTab('security')}
-              >
-                <Shield size={20} />
-                Security
-              </button>
-              <button
-                className={`tab-item ${activeTab === 'notifications' ? 'active' : ''}`}
-                onClick={() => setActiveTab('notifications')}
-              >
-                <Bell size={20} />
-                Notifications
-              </button>
-              <button
-                className={`tab-item ${activeTab === 'billing' ? 'active' : ''}`}
-                onClick={() => setActiveTab('billing')}
-              >
-                <CreditCard size={20} />
-                Billing
-              </button>
+              {[
+                { id: 'profile',       label: 'Profile',       Icon: User       },
+                { id: 'security',      label: 'Security',      Icon: Shield     },
+                { id: 'notifications', label: 'Notifications', Icon: Bell       },
+                { id: 'billing',       label: 'Billing',       Icon: CreditCard },
+              ].map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  className={`tab-item ${activeTab === id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(id)}
+                >
+                  <Icon size={20} />
+                  {label}
+                </button>
+              ))}
             </div>
 
-            {/* Settings Content */}
             <div className="settings-content">
-              
-              {/* PROFILE TAB */}
+
+              {/* ── PROFILE ── */}
               {activeTab === 'profile' && (
                 <div className="settings-section">
                   <h3>Profile Information</h3>
                   <form onSubmit={handleProfileUpdate}>
                     <div className="form-group">
-                      <label>
-                        <User size={16} />
-                        Full Name
-                      </label>
+                      <label><User size={16} /> Full Name</label>
                       <input
                         type="text"
                         value={profileData.displayName}
@@ -184,39 +263,26 @@ function Settings() {
                         placeholder="Your name"
                       />
                     </div>
-
                     <div className="form-group">
-                      <label>
-                        <Mail size={16} />
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        value={profileData.email}
-                        disabled
-                        className="disabled-input"
-                      />
+                      <label><Mail size={16} /> Email Address</label>
+                      <input type="email" value={profileData.email} disabled className="disabled-input" />
                       <small>Email cannot be changed</small>
                     </div>
-
                     <button type="submit" className="btn-save" disabled={loading}>
-                      <Save size={18} />
+                      {loading ? <Loader size={16} className="spin" /> : <Save size={18} />}
                       {loading ? 'Saving...' : 'Save Changes'}
                     </button>
                   </form>
                 </div>
               )}
 
-              {/* SECURITY TAB */}
+              {/* ── SECURITY ── */}
               {activeTab === 'security' && (
                 <div className="settings-section">
                   <h3>Change Password</h3>
                   <form onSubmit={handlePasswordChange}>
                     <div className="form-group">
-                      <label>
-                        <Lock size={16} />
-                        Current Password
-                      </label>
+                      <label><Lock size={16} /> Current Password</label>
                       <input
                         type="password"
                         value={profileData.currentPassword}
@@ -225,12 +291,8 @@ function Settings() {
                         required
                       />
                     </div>
-
                     <div className="form-group">
-                      <label>
-                        <Lock size={16} />
-                        New Password
-                      </label>
+                      <label><Lock size={16} /> New Password</label>
                       <input
                         type="password"
                         value={profileData.newPassword}
@@ -239,12 +301,8 @@ function Settings() {
                         required
                       />
                     </div>
-
                     <div className="form-group">
-                      <label>
-                        <Lock size={16} />
-                        Confirm New Password
-                      </label>
+                      <label><Lock size={16} /> Confirm New Password</label>
                       <input
                         type="password"
                         value={profileData.confirmPassword}
@@ -253,9 +311,8 @@ function Settings() {
                         required
                       />
                     </div>
-
                     <button type="submit" className="btn-save" disabled={loading}>
-                      <Save size={18} />
+                      {loading ? <Loader size={16} className="spin" /> : <Save size={18} />}
                       {loading ? 'Updating...' : 'Update Password'}
                     </button>
                   </form>
@@ -271,130 +328,129 @@ function Settings() {
                 </div>
               )}
 
-              {/* NOTIFICATIONS TAB */}
+              {/* ── NOTIFICATIONS ── */}
               {activeTab === 'notifications' && (
                 <div className="settings-section">
                   <h3>Notification Preferences</h3>
-                  
-                  <div className="notification-item">
-                    <div className="notification-info">
-                      <Bell size={20} />
-                      <div>
-                        <h4>Email Notifications</h4>
-                        <p>Receive email updates about your account</p>
+                  {[
+                    { key: 'emailNotifications', title: 'Email Notifications',  desc: 'Receive email updates about your account' },
+                    { key: 'postReminders',       title: 'Post Reminders',       desc: 'Get reminded before scheduled posts go live' },
+                    { key: 'weeklyReports',       title: 'Weekly Reports',       desc: 'Receive weekly performance summaries' },
+                    { key: 'accountActivity',     title: 'Account Activity',     desc: 'Alerts for important account changes' },
+                  ].map(({ key, title, desc }) => (
+                    <div key={key} className="notification-item">
+                      <div className="notification-info">
+                        <Bell size={20} />
+                        <div>
+                          <h4>{title}</h4>
+                          <p>{desc}</p>
+                        </div>
                       </div>
+                      <label className="toggle-switch">
+                        <input
+                          type="checkbox"
+                          checked={notificationSettings[key]}
+                          onChange={() => handleNotificationToggle(key)}
+                        />
+                        <span className="toggle-slider"></span>
+                      </label>
                     </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.emailNotifications}
-                        onChange={() => handleNotificationToggle('emailNotifications')}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                  </div>
-
-                  <div className="notification-item">
-                    <div className="notification-info">
-                      <Bell size={20} />
-                      <div>
-                        <h4>Post Reminders</h4>
-                        <p>Get reminded before scheduled posts go live</p>
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.postReminders}
-                        onChange={() => handleNotificationToggle('postReminders')}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                  </div>
-
-                  <div className="notification-item">
-                    <div className="notification-info">
-                      <Bell size={20} />
-                      <div>
-                        <h4>Weekly Reports</h4>
-                        <p>Receive weekly performance summaries</p>
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.weeklyReports}
-                        onChange={() => handleNotificationToggle('weeklyReports')}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                  </div>
-
-                  <div className="notification-item">
-                    <div className="notification-info">
-                      <Bell size={20} />
-                      <div>
-                        <h4>Account Activity</h4>
-                        <p>Alerts for important account changes</p>
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.accountActivity}
-                        onChange={() => handleNotificationToggle('accountActivity')}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                  </div>
+                  ))}
                 </div>
               )}
 
-              {/* BILLING TAB */}
+              {/* ── BILLING ── */}
               {activeTab === 'billing' && (
                 <div className="settings-section">
                   <h3>Billing & Subscription</h3>
-                  
+
                   <div className="subscription-card">
                     <div className="subscription-header">
                       <CreditCard size={24} />
                       <div>
-                        <h4>Free Plan</h4>
-                        <p>10 posts per month • 2 platforms</p>
+                        <h4>{tierDisplay} Plan</h4>
+                        <p>
+                          {tierLimits.posts === 'Unlimited'
+                            ? 'Unlimited posts · Unlimited platforms'
+                            : `${tierLimits.posts} posts/month · ${tierLimits.platforms} platform${tierLimits.platforms > 1 ? 's' : ''}`}
+                        </p>
                       </div>
                     </div>
-                    <button className="btn-upgrade">
-                      Upgrade to Pro
-                    </button>
+                    {subscriptionTier === 'free' && (
+                      <button
+                        className="btn-upgrade"
+                        onClick={() => navigate('/pricing')}
+                      >
+                        Upgrade to Pro
+                      </button>
+                    )}
                   </div>
 
+                  {/* Real usage stats */}
                   <div className="usage-stats">
                     <h4>Usage This Month</h4>
-                    <div className="stat-item">
-                      <span>Posts Generated</span>
-                      <strong>10 / 10</strong>
-                    </div>
-                    <div className="stat-item">
-                      <span>Platforms Connected</span>
-                      <strong>2 / 2</strong>
-                    </div>
-                    <div className="stat-item">
-                      <span>AI Credits Used</span>
-                      <strong>20 / 20</strong>
-                    </div>
+
+                    {usageLoading ? (
+                      <div className="loading-state">
+                        <Loader size={16} className="spin" /> Loading usage...
+                      </div>
+                    ) : (
+                      <>
+                        <div className="stat-item">
+                          <div className="stat-label">
+                            <span>Posts Generated</span>
+                            <strong>{formatLimit(usage.postsThisMonth, tierLimits.posts)}</strong>
+                          </div>
+                          {tierLimits.posts !== 'Unlimited' && (
+                            <div className="usage-bar">
+                              <div
+                                className="usage-fill"
+                                style={{
+                                  width: `${usagePercent(usage.postsThisMonth, tierLimits.posts)}%`,
+                                  backgroundColor: usagePercent(usage.postsThisMonth, tierLimits.posts) >= 90 ? '#ef4444' : '#7c3aed',
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {subscriptionTier !== 'free' && (
+                          <div className="stat-item">
+                            <div className="stat-label">
+                              <span>Research Queries</span>
+                              <strong>{formatLimit(usage.researchThisMonth, tierLimits.research)}</strong>
+                            </div>
+                            {tierLimits.research !== 'Unlimited' && (
+                              <div className="usage-bar">
+                                <div
+                                  className="usage-fill"
+                                  style={{
+                                    width: `${usagePercent(usage.researchThisMonth, tierLimits.research)}%`,
+                                    backgroundColor: usagePercent(usage.researchThisMonth, tierLimits.research) >= 90 ? '#ef4444' : '#7c3aed',
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
 
-                  <div className="pricing-info">
-                    <h4>Pro Plan Benefits</h4>
-                    <ul>
-                      <li>✅ 100 posts per month</li>
-                      <li>✅ Unlimited platforms</li>
-                      <li>✅ 500 AI credits</li>
-                      <li>✅ Advanced analytics</li>
-                      <li>✅ Priority support</li>
-                    </ul>
-                    <p className="price">$29/month</p>
-                  </div>
+                  {subscriptionTier === 'free' && (
+                    <div className="pricing-info">
+                      <h4>Pro Plan Benefits</h4>
+                      <ul>
+                        <li>✅ 100 posts per month</li>
+                        <li>✅ 5 social platforms</li>
+                        <li>✅ 50 research queries</li>
+                        <li>✅ Advanced analytics</li>
+                        <li>✅ Priority support</li>
+                      </ul>
+                      <p className="price">₦9,999/month</p>
+                    </div>
+                  )}
+
                 </div>
               )}
 

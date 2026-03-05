@@ -1,55 +1,67 @@
 // aiService.js
-// Frontend calls Cloud Functions (secure backend)
-// NEVER expose API keys in browser code
+// All AI calls go to Netlify Functions, NOT Firebase.
+// Firebase Spark plan blocks outbound HTTP to Gemini API.
+// The GEMINI_API_KEY is stored securely in Netlify environment variables.
 
-import { httpsCallable } from 'firebase/functions';
-import { functions } from './firebase';
+// ─── Helper ───────────────────────────────────────────────────────────────────
 
-// Call Cloud Function for content generation
-// API key stays secure on backend servers
+const callNetlify = async (payload) => {
+  const response = await fetch('/.netlify/functions/generate-content', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Request to generate-content function failed');
+  }
+
+  return data;
+};
+
+// ─── Generate social media content ───────────────────────────────────────────
+// Called by ContentGenerator.jsx
+// Returns { success, content } where content is a JSON string with keys:
+// twitter, linkedin, instagram, tiktok, youtube
+
 export const generateContent = async (prompt, tone, businessContext) => {
   try {
-    const generateContentFunction = httpsCallable(functions, 'generateContent');
-    const response = await generateContentFunction({
-      prompt,
-      tone,
-      businessContext
-    });
+    const data = await callNetlify({ type: 'generate', prompt, tone, businessContext });
 
     return {
       success: true,
-      content: response.data.content
+      content: data.content,
     };
   } catch (error) {
     console.error('Content generation error:', error);
     return {
       success: false,
       error: error.message,
-      content: '[Content] Error generating. Try again.'
+      content: 'Failed to generate content. Please try again.',
     };
   }
 };
 
-// Call Cloud Function for market research
-// API key stays secure on backend servers
+// ─── Conduct market research ──────────────────────────────────────────────────
+// Called by ContentGenerator.jsx when "Include market research" is checked.
+// Returns { success, insights } where insights is a JSON string.
+
 export const conductResearch = async (topic, businessNiche) => {
   try {
-    const conductResearchFunction = httpsCallable(functions, 'conductResearch');
-    const response = await conductResearchFunction({
-      topic,
-      businessNiche
-    });
+    const data = await callNetlify({ type: 'research', topic, businessNiche });
 
     return {
       success: true,
-      insights: response.data.insights
+      insights: data.insights,
     };
   } catch (error) {
     console.error('Research error:', error);
     return {
       success: false,
       error: error.message,
-      insights: '[Research] Error conducting research. Try again.'
+      insights: 'Failed to conduct research. Please try again.',
     };
   }
 };

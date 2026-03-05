@@ -1,40 +1,50 @@
 // socialMediaService.js
-// Handles OAuth connections - secure backend only
+// OAuth connections + social media posting
+//
+// ARCHITECTURE:
+// - connect*()         → redirect to platform OAuth (browser is fine)
+// - handle*Callback()  → Netlify oauthExchange → Firestore
+// - post*()            → Netlify post-to-platform → platform API
+// - getConnectedAccounts() / disconnectAccount() → Firestore only
+//
+// ALL outbound HTTP to external APIs goes through Netlify Functions.
+// Firebase is used ONLY for Firestore reads/writes.
 
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
 
-// NOTE: Firebase httpsCallable is no longer used for OAuth token exchange.
-// Outbound requests to external APIs (Facebook, Google, etc.) are handled
-// by Netlify Functions to avoid Firebase Spark plan billing restrictions.
-// Firebase is still used for Firestore (database reads/writes only).
-
 const REDIRECT_URI = window.location.origin + '/accounts';
 
-// ─── Netlify Function Helper ──────────────────────────────────────────────────
+// ─── Netlify helpers ──────────────────────────────────────────────────────────
 
 const exchangeViaNetlify = async (platform, code, userId) => {
   const response = await fetch('/.netlify/functions/oauthExchange', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      platform,
-      code,
-      redirectUri: REDIRECT_URI,
-      userId,
-    }),
+    body: JSON.stringify({ platform, code, redirectUri: REDIRECT_URI, userId }),
   });
-
   const data = await response.json();
-
   if (!response.ok || !data.success) {
     throw new Error(data.error || `Failed to exchange ${platform} token`);
   }
-
   return data;
 };
 
-// ─── Save Account to Firestore ────────────────────────────────────────────────
+// Single entry point for all platform posting.
+const postViaNetlify = async (payload) => {
+  const response = await fetch('/.netlify/functions/post-to-platform', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || `Failed to post to ${payload.platform}`);
+  }
+  return data;
+};
+
+// ─── Save account to Firestore ────────────────────────────────────────────────
 
 const saveAccountToFirestore = async (userId, platform, tokenData) => {
   await addDoc(collection(db, 'socialAccounts'), {
@@ -51,22 +61,18 @@ const saveAccountToFirestore = async (userId, platform, tokenData) => {
   });
 };
 
-// =============== FACEBOOK / INSTAGRAM ========================================
+// =============== FACEBOOK =====================================================
 
 export const connectFacebook = () => {
   const clientId = import.meta.env.VITE_FACEBOOK_APP_ID || 'placeholder';
-  const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish';
-
-  // IMPORTANT: every connect* function must end with &state=<platformId>
-  // so SocialAccounts.jsx knows which callback handler to invoke on return.
-  const authUrl =
+  const scope    = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish';
+  const authUrl  =
     `https://www.facebook.com/v18.0/dialog/oauth` +
     `?client_id=${clientId}` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
     `&scope=${scope}` +
     `&response_type=code` +
     `&state=facebook`;
-
   window.location.href = authUrl;
 };
 
@@ -81,36 +87,63 @@ export const handleFacebookCallback = async (code, userId) => {
   }
 };
 
-export const postToFacebook = async (pageId, accessToken, content, imageUrl) => {
+export const postToFacebook = async (pageId, accessToken, content, mediaUrl = null) => {
   try {
-    const { httpsCallable } = await import('firebase/functions');
-    const { functions } = await import('./firebase');
-    const postFunction = httpsCallable(functions, 'postToFacebook');
-    const result = await postFunction({ pageId, accessToken, content, imageUrl });
-    return {
-      success: result.data.success,
-      postId:  result.data.postId,
-      error:   result.data.error,
-    };
+    return await postViaNetlify({ platform: 'facebook', pageId, accessToken, content, mediaUrl });
   } catch (error) {
     return { success: false, error: error.message };
   }
 };
 
-// =============== TIKTOK ======================================================
+// =============== INSTAGRAM ====================================================
+
+export const connectInstagram = () => {
+  const clientId = import.meta.env.VITE_FACEBOOK_APP_ID || 'placeholder';
+  const scope    = 'instagram_basic,instagram_content_publish,pages_read_engagement';
+  const authUrl  =
+    `https://www.facebook.com/v18.0/dialog/oauth` +
+    `?client_id=${clientId}` +
+    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&scope=${scope}` +
+    `&response_type=code` +
+    `&state=instagram`;
+  window.location.href = authUrl;
+};
+
+export const handleInstagramCallback = async (code, userId) => {
+  try {
+    const tokenData = await exchangeViaNetlify('instagram', code, userId);
+    await saveAccountToFirestore(userId, 'instagram', tokenData);
+    return { success: true };
+  } catch (error) {
+    console.error('Instagram auth error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+export const postToInstagram = async (accountId, accessToken, imageUrl, caption) => {
+  try {
+    return await postViaNetlify({
+      platform: 'instagram', accountId, accessToken,
+      content: caption, mediaUrl: imageUrl,
+    });
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+// =============== TIKTOK =======================================================
 
 export const connectTikTok = () => {
   const clientKey = import.meta.env.VITE_TIKTOK_CLIENT_KEY || 'placeholder';
-  const scope = 'user.info.basic,video.upload,video.publish';
-
-  const authUrl =
+  const scope     = 'user.info.basic,video.upload,video.publish';
+  const authUrl   =
     `https://www.tiktok.com/v2/auth/authorize/` +
     `?client_key=${clientKey}` +
     `&scope=${scope}` +
     `&response_type=code` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
     `&state=tiktok`;
-
   window.location.href = authUrl;
 };
 
@@ -127,44 +160,17 @@ export const handleTikTokCallback = async (code, userId) => {
 
 export const postToTikTok = async (accessToken, videoUrl, caption) => {
   try {
-    const response = await fetch('https://open.tiktokapis.com/v2/post/publish/video/init/', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        post_info: {
-          title: caption,
-          privacy_level: 'SELF_ONLY',
-          disable_duet: false,
-          disable_comment: false,
-          disable_stitch: false,
-          video_cover_timestamp_ms: 1000,
-        },
-        source_info: {
-          source: 'FILE_UPLOAD',
-          video_url: videoUrl,
-        },
-      }),
-    });
-    const data = await response.json();
-    return {
-      success: !!data.data?.publish_id,
-      postId:  data.data?.publish_id,
-      error:   data.error?.message,
-    };
+    return await postViaNetlify({ platform: 'tiktok', accessToken, content: caption, mediaUrl: videoUrl });
   } catch (error) {
     return { success: false, error: error.message };
   }
 };
 
-// =============== TWITTER / X =================================================
+// =============== TWITTER / X ==================================================
 
 export const connectTwitter = () => {
-  const apiKey = import.meta.env.VITE_TWITTER_API_KEY || 'placeholder';
-  const scope = 'tweet.read tweet.write users.read offline.access';
-
+  const apiKey  = import.meta.env.VITE_TWITTER_API_KEY || 'placeholder';
+  const scope   = 'tweet.read tweet.write users.read offline.access';
   const authUrl =
     `https://twitter.com/i/oauth2/authorize` +
     `?response_type=code` +
@@ -174,7 +180,6 @@ export const connectTwitter = () => {
     `&state=twitter` +
     `&code_challenge=challenge` +
     `&code_challenge_method=plain`;
-
   window.location.href = authUrl;
 };
 
@@ -189,79 +194,22 @@ export const handleTwitterCallback = async (code, userId) => {
   }
 };
 
-export const postToTwitter = async (accessToken, content, mediaUrl) => {
+export const postToTwitter = async (accessToken, content) => {
   try {
-    let mediaId = null;
-    if (mediaUrl) {
-      const mediaResponse = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ media_url: mediaUrl }),
-      });
-      const mediaData = await mediaResponse.json();
-      mediaId = mediaData.media_id_string;
-    }
-    const tweetBody = { text: content };
-    if (mediaId) tweetBody.media = { media_ids: [mediaId] };
-    const response = await fetch('https://api.twitter.com/2/tweets', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(tweetBody),
-    });
-    const data = await response.json();
-    return {
-      success: !!data.data?.id,
-      postId:  data.data?.id,
-      error:   data.errors?.[0]?.message,
-    };
+    return await postViaNetlify({ platform: 'twitter', accessToken, content });
   } catch (error) {
     return { success: false, error: error.message };
   }
 };
 
-// =============== INSTAGRAM ===================================================
-
-export const postToInstagram = async (accountId, accessToken, imageUrl, caption) => {
-  try {
-    const containerResponse = await fetch(`https://graph.facebook.com/v18.0/${accountId}/media`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: imageUrl, caption, access_token: accessToken }),
-    });
-    const containerData = await containerResponse.json();
-    if (containerData.error) throw new Error(containerData.error.message);
-
-    const publishResponse = await fetch(`https://graph.facebook.com/v18.0/${accountId}/media_publish`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ creation_id: containerData.id, access_token: accessToken }),
-    });
-    const publishData = await publishResponse.json();
-    return {
-      success: !publishData.error,
-      postId:  publishData.id,
-      error:   publishData.error?.message,
-    };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-};
-
-// =============== YOUTUBE =====================================================
+// =============== YOUTUBE ======================================================
 
 export const connectYouTube = () => {
   const clientId = import.meta.env.VITE_YOUTUBE_CLIENT_ID || 'placeholder';
-  const scope = [
+  const scope    = [
     'https://www.googleapis.com/auth/youtube.upload',
     'https://www.googleapis.com/auth/youtube',
   ].join(' ');
-
   const authUrl =
     `https://accounts.google.com/o/oauth2/v2/auth` +
     `?client_id=${clientId}` +
@@ -270,7 +218,6 @@ export const connectYouTube = () => {
     `&scope=${encodeURIComponent(scope)}` +
     `&access_type=offline` +
     `&state=youtube`;
-
   window.location.href = authUrl;
 };
 
@@ -287,42 +234,19 @@ export const handleYouTubeCallback = async (code, userId) => {
 
 export const postToYouTube = async (accessToken, videoUrl, title, description) => {
   try {
-    const response = await fetch(
-      'https://www.googleapis.com/upload/youtube/v3/videos?part=snippet,status',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          snippet: { title, description, categoryId: '22' },
-          status:  { privacyStatus: 'public' },
-        }),
-      }
-    );
-    const data = await response.json();
-    return {
-      success: !!data.id,
-      postId:  data.id,
-      error:   data.error?.message,
-    };
+    return await postViaNetlify({ platform: 'youtube', accessToken, content: description, mediaUrl: videoUrl, title, description });
   } catch (error) {
     return { success: false, error: error.message };
   }
 };
 
-// =============== COMMON FUNCTIONS ============================================
+// =============== COMMON =======================================================
 
 export const getConnectedAccounts = async (userId) => {
   try {
-    const q = query(
-      collection(db, 'socialAccounts'),
-      where('userId', '==', userId)
-    );
-    const querySnapshot = await getDocs(q);
-    const accounts = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    return { success: true, accounts };
+    const q = query(collection(db, 'socialAccounts'), where('userId', '==', userId));
+    const snap = await getDocs(q);
+    return { success: true, accounts: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
   } catch (error) {
     console.error('Error fetching accounts:', error);
     return { success: false, error: error.message };
@@ -339,30 +263,39 @@ export const disconnectAccount = async (accountId) => {
   }
 };
 
-export const postToMultiplePlatforms = async (accounts, content, mediaUrl) => {
+// Posts to multiple platforms using per-platform content.
+// contentByPlatform: JSON string or object { twitter, linkedin, instagram, tiktok, youtube }
+export const postToMultiplePlatforms = async (accounts, contentByPlatform, mediaUrl = null) => {
+  let parsed = contentByPlatform;
+  if (typeof contentByPlatform === 'string') {
+    try { parsed = JSON.parse(contentByPlatform); } catch { parsed = {}; }
+  }
+
   const results = [];
   for (const account of accounts) {
+    const { platform, accountId, accessToken, accountName } = account;
+    const platformContent = parsed[platform] || parsed.twitter || String(contentByPlatform);
+
     let result;
-    switch (account.platform) {
-      case 'facebook':
-        result = await postToFacebook(account.accountId, account.accessToken, content, mediaUrl);
-        break;
-      case 'twitter':
-        result = await postToTwitter(account.accessToken, content, mediaUrl);
-        break;
-      case 'instagram':
-        result = await postToInstagram(account.accountId, account.accessToken, mediaUrl, content);
-        break;
-      case 'tiktok':
-        result = await postToTikTok(account.accessToken, mediaUrl, content);
-        break;
-      case 'youtube':
-        result = await postToYouTube(account.accessToken, mediaUrl, content.slice(0, 100), content);
-        break;
-      default:
-        result = { success: false, error: 'Unknown platform' };
+    try {
+      switch (platform) {
+        case 'facebook':
+          result = await postToFacebook(accountId, accessToken, platformContent, mediaUrl); break;
+        case 'instagram':
+          result = await postToInstagram(accountId, accessToken, mediaUrl, platformContent); break;
+        case 'twitter':
+          result = await postToTwitter(accessToken, platformContent); break;
+        case 'tiktok':
+          result = await postToTikTok(accessToken, mediaUrl, platformContent); break;
+        case 'youtube':
+          result = await postToYouTube(accessToken, mediaUrl, platformContent.slice(0, 100), platformContent); break;
+        default:
+          result = { success: false, error: `Unsupported platform: ${platform}` };
+      }
+    } catch (err) {
+      result = { success: false, error: err.message };
     }
-    results.push({ platform: account.platform, accountName: account.accountName, ...result });
+    results.push({ platform, accountName, ...result });
   }
   return results;
 };

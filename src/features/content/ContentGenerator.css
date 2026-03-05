@@ -1,5 +1,18 @@
 /* ContentGenerator.css */
 
+.platform-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.platform-tab { padding: 6px 12px; border: 1px solid #ddd; border-radius: 20px; cursor: pointer; background: white; }
+.platform-tab.active { background: #7c3aed; color: white; border-color: #7c3aed; }
+.platform-content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.char-count { font-size: 12px; color: #888; }
+.char-count.over-limit { color: #ef4444; font-weight: bold; }
+.platform-textarea { width: 100%; border-radius: 8px; padding: 12px; border: 1px solid #ddd; resize: vertical; }
+.platform-textarea.over-limit { border-color: #ef4444; }
+.btn-copy { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px; background: white; }
+
+
+
+
 .generator-container {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -1,231 +1,280 @@
 // Pricing.jsx
-// Dedicated pricing page with FAQ
+// Subscription pricing page with Paystack payment integration.
+// Payment initialization goes to Netlify (initialize-payment function),
+// NOT Firebase — Paystack API calls are outbound HTTP blocked on Spark plan.
 
-import { motion } from 'framer-motion';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import SEO from '../components/SEO';
-import Navbar from '../components/landing/Navbar';
-import Footer from '../components/landing/Footer';
-import { CheckCircle2, X, Plus, Minus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import Sidebar from '../../components/Sidebar';
+import Header from '../../components/Header';
+import { Check, AlertCircle } from 'lucide-react';
 import './Pricing.css';
 
+// ─── Plan definitions ─────────────────────────────────────────────────────────
+
+const TIERS = {
+  free: {
+    name:        'Free',
+    monthlyPrice: null,
+    yearlyPrice:  null,
+    displayPrice: { monthly: '₦0', yearly: '₦0' },
+    description: 'Perfect for getting started',
+    features: [
+      '5 posts / month',
+      '1 social media platform',
+      '1 business profile',
+      'Basic AI content generation',
+      'Community support',
+    ],
+    cta:      'Current Plan',
+    disabled: true,
+  },
+  pro: {
+    name:        'Pro',
+    monthlyPrice: 9999,
+    yearlyPrice:  99999,
+    displayPrice: { monthly: '₦9,999', yearly: '₦99,999' },
+    description: 'For growing businesses',
+    features: [
+      '100 posts / month',
+      '5 social platforms',
+      'Unlimited businesses',
+      'Advanced AI content',
+      'Multi-platform scheduling',
+      'YouTube integration',
+      'Priority support',
+    ],
+    cta:      'Upgrade Now',
+    disabled: false,
+  },
+  enterprise: {
+    name:        'Enterprise',
+    monthlyPrice: 29999,
+    yearlyPrice:  299999,
+    displayPrice: { monthly: '₦29,999', yearly: '₦299,999' },
+    description: 'For agencies & teams',
+    features: [
+      'Unlimited posts',
+      'Unlimited platforms',
+      'Team collaboration',
+      'Custom integrations',
+      'Advanced analytics',
+      'API access',
+      'Dedicated support',
+      'White-label options',
+    ],
+    cta:      'Contact Sales',
+    disabled: false,
+  },
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 function Pricing() {
-  const navigate = useNavigate();
-  const [billingCycle, setBillingCycle] = useState('monthly'); // monthly or yearly
-  const [openFAQ, setOpenFAQ] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { currentUser }               = useAuth();
+  const [currentTier, setCurrentTier] = useState('free');
+  const [billing, setBilling]         = useState('monthly');
+  const [loading, setLoading]         = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState(null); // which plan button is spinning
+  const [error, setError]             = useState('');
 
-  const plans = [
-    {
-      name: "Free",
-      price: { monthly: 0, yearly: 0 },
-      description: "Perfect for getting started",
-      features: [
-        { text: "5 AI-generated posts per month", included: true },
-        { text: "1 social platform", included: true },
-        { text: "Basic analytics", included: true },
-        { text: "Email support", included: true },
-        { text: "Advanced analytics", included: false },
-        { text: "Team collaboration", included: false },
-        { text: "Priority support", included: false }
-      ],
-      cta: "Start Free",
-      popular: false
-    },
-    {
-      name: "Pro",
-      price: { monthly: 29, yearly: 24 },
-      description: "For professionals and growing businesses",
-      features: [
-        { text: "100 AI-generated posts per month", included: true },
-        { text: "5 social platforms", included: true },
-        { text: "Advanced analytics & reports", included: true },
-        { text: "Priority email & chat support", included: true },
-        { text: "Custom brand voice training", included: true },
-        { text: "Team collaboration (5 members)", included: true },
-        { text: "Content calendar", included: true }
-      ],
-      cta: "Start 14-Day Free Trial",
-      popular: true
-    },
-    {
-      name: "Enterprise",
-      price: { monthly: 99, yearly: 82 },
-      description: "For agencies and large organizations",
-      features: [
-        { text: "Unlimited AI-generated posts", included: true },
-        { text: "Unlimited social platforms", included: true },
-        { text: "White-label analytics reports", included: true },
-        { text: "Dedicated account manager", included: true },
-        { text: "API access", included: true },
-        { text: "Unlimited team members", included: true },
-        { text: "Custom integrations", included: true },
-        { text: "SLA guarantee (99.9% uptime)", included: true }
-      ],
-      cta: "Contact Sales",
-      popular: false
+  // ─── Load user's current tier from Firestore ────────────────────────────────
+
+  useEffect(() => {
+    if (!currentUser) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', currentUser.uid));
+        if (snap.exists()) {
+          setCurrentTier(snap.data().subscriptionTier || 'free');
+        }
+      } catch (err) {
+        console.error('Error fetching user tier:', err);
+      }
+    })();
+  }, [currentUser]);
+
+  // ─── Handle upgrade ──────────────────────────────────────────────────────────
+
+  const handleUpgrade = async (plan) => {
+    if (!currentUser) { alert('Please sign in first'); return; }
+    if (plan === 'free') return;
+    if (plan === currentTier) return; // already on this plan
+
+    // Enterprise → contact sales instead of payment flow
+    if (plan === 'enterprise') {
+      window.location.href = 'mailto:sales@marketmind.app?subject=Enterprise Plan Enquiry';
+      return;
     }
-  ];
 
-  const faqs = [
-    {
-      question: "Can I switch plans at any time?",
-      answer: "Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll pro-rate the difference."
-    },
-    {
-      question: "What payment methods do you accept?",
-      answer: "We accept all major credit cards (Visa, Mastercard, American Express), PayPal, and bank transfers for Enterprise plans."
-    },
-    {
-      question: "Is there a free trial?",
-      answer: "Yes! Pro and Enterprise plans come with a 14-day free trial. No credit card required. The Free plan is available forever with no trial needed."
-    },
-    {
-      question: "What happens when I reach my post limit?",
-      answer: "You'll receive a notification when you're close to your limit. You can upgrade your plan or wait until next month when your quota resets."
-    },
-    {
-      question: "Can I cancel my subscription?",
-      answer: "Yes, you can cancel anytime. Your account will remain active until the end of your current billing period. No questions asked."
-    },
-    {
-      question: "Do you offer refunds?",
-      answer: "Yes! We offer a 30-day money-back guarantee. If you're not satisfied, contact us within 30 days for a full refund."
-    },
-    {
-      question: "Is my data secure?",
-      answer: "Absolutely. We use bank-level AES-256 encryption, comply with GDPR and CCPA regulations, and never sell your data to third parties."
-    },
-    {
-      question: "Can I add more team members?",
-      answer: "Yes! Pro plans include 5 team members. You can add more for $5/member/month. Enterprise plans have unlimited team members."
+    setLoadingPlan(plan);
+    setError('');
+
+    try {
+      // Call Netlify function — NOT Firebase (outbound HTTP blocked on Spark)
+      const response = await fetch('/.netlify/functions/initialize-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email:   currentUser.email,
+          plan,
+          billing,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Payment initialization failed');
+      }
+
+      // Redirect to Paystack hosted payment page
+      window.location.href = data.authorizationUrl;
+
+    } catch (err) {
+      setError(err.message || 'Failed to process payment. Please try again.');
+    } finally {
+      setLoadingPlan(null);
     }
-  ];
-
-  const toggleFAQ = (index) => {
-    setOpenFAQ(openFAQ === index ? null : index);
   };
 
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+  const isCurrentPlan = (key) => key === currentTier;
+
+  const getButtonLabel = (key, tier) => {
+    if (isCurrentPlan(key))    return 'Current Plan';
+    if (loadingPlan === key)   return 'Processing...';
+    return tier.cta;
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   return (
-    <>
-      <SEO 
-        title="Pricing - Market Mind | Affordable Social Media Marketing Plans"
-        description="Choose the perfect plan for your business. Start free, upgrade anytime. Pro at $29/mo, Enterprise at $99/mo. 14-day free trial, no credit card required."
-        keywords="social media pricing, marketing tool pricing, affordable social media management, free social media tool, pro plan, enterprise plan"
-      />
+    <div className="app">
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main className="main-content">
+        <Header onMenuClick={() => setSidebarOpen(true)} />
 
-      <div className="pricing-page">
-        <Navbar />
+        <div className="content-area">
+          <div className="pricing-container">
 
-        {/* Hero */}
-        <section className="pricing-hero">
-          <div className="pricing-hero-container">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-            >
+            {/* Header */}
+            <div className="pricing-header">
               <h1>Simple, Transparent Pricing</h1>
-              <p>Choose the plan that fits your needs. Upgrade or downgrade anytime.</p>
-              
-              {/* Billing Toggle */}
-              <div className="billing-toggle">
-                <button
-                  className={billingCycle === 'monthly' ? 'active' : ''}
-                  onClick={() => setBillingCycle('monthly')}
-                >
-                  Monthly
-                </button>
-                <button
-                  className={billingCycle === 'yearly' ? 'active' : ''}
-                  onClick={() => setBillingCycle('yearly')}
-                >
-                  Yearly
-                  <span className="save-badge">Save 17%</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        </section>
+              <p>Choose the perfect plan for your business growth</p>
+            </div>
 
-        {/* Pricing Cards */}
-        <section className="pricing-cards-section">
-          <div className="pricing-cards-container">
-            {plans.map((plan, index) => (
-              <motion.div
-                key={index}
-                className={`pricing-plan-card ${plan.popular ? 'popular' : ''}`}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
+            {/* Billing toggle */}
+            <div className="billing-toggle">
+              <button
+                className={`toggle-btn ${billing === 'monthly' ? 'active' : ''}`}
+                onClick={() => setBilling('monthly')}
               >
-                {plan.popular && <div className="popular-label">Most Popular</div>}
-                
-                <h3>{plan.name}</h3>
-                <div className="plan-price">
-                  <span className="currency">$</span>
-                  <span className="amount">{plan.price[billingCycle]}</span>
-                  <span className="period">/{billingCycle === 'monthly' ? 'mo' : 'mo billed yearly'}</span>
-                </div>
-                <p className="plan-description">{plan.description}</p>
+                Monthly
+              </button>
+              <button
+                className={`toggle-btn ${billing === 'yearly' ? 'active' : ''}`}
+                onClick={() => setBilling('yearly')}
+              >
+                Yearly
+                <span className="badge">Save 17%</span>
+              </button>
+            </div>
 
-                <ul className="plan-features">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className={feature.included ? 'included' : 'not-included'}>
-                      {feature.included ? (
-                        <CheckCircle2 size={20} />
-                      ) : (
-                        <X size={20} />
-                      )}
-                      <span>{feature.text}</span>
-                    </li>
-                  ))}
-                </ul>
+            {/* Error message */}
+            {error && (
+              <div className="error-box">
+                <AlertCircle size={18} />
+                {error}
+              </div>
+            )}
 
-                <button
-                  className={`plan-cta ${plan.popular ? 'primary' : 'secondary'}`}
-                  onClick={() => navigate('/signup')}
+            {/* Pricing cards */}
+            <div className="pricing-grid">
+              {Object.entries(TIERS).map(([key, tier]) => (
+                <div
+                  key={key}
+                  className={[
+                    'pricing-card',
+                    isCurrentPlan(key) ? 'current' : '',
+                    key === 'pro'      ? 'featured' : '',
+                  ].filter(Boolean).join(' ')}
                 >
-                  {plan.cta}
-                </button>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* FAQ Section */}
-        <section className="faq-section">
-          <div className="faq-container">
-            <h2>Frequently Asked Questions</h2>
-            <div className="faq-list">
-              {faqs.map((faq, index) => (
-                <div key={index} className="faq-item">
-                  <button
-                    className="faq-question"
-                    onClick={() => toggleFAQ(index)}
-                  >
-                    <span>{faq.question}</span>
-                    {openFAQ === index ? <Minus size={20} /> : <Plus size={20} />}
-                  </button>
-                  {openFAQ === index && (
-                    <motion.div
-                      className="faq-answer"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                    >
-                      <p>{faq.answer}</p>
-                    </motion.div>
+                  {key === 'pro' && (
+                    <div className="featured-badge">Most Popular</div>
                   )}
+
+                  <h3>{tier.name}</h3>
+                  <p className="description">{tier.description}</p>
+
+                  <div className="price">
+                    <span className="amount">{tier.displayPrice[billing]}</span>
+                    <span className="period">/month</span>
+                  </div>
+
+                  {billing === 'yearly' && tier.yearlyPrice && (
+                    <p className="yearly-note">Billed as ₦{tier.yearlyPrice.toLocaleString()} / year</p>
+                  )}
+
+                  <button
+                    className={[
+                      'upgrade-btn',
+                      isCurrentPlan(key)  ? 'disabled'  : '',
+                      loadingPlan === key  ? 'loading'   : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => handleUpgrade(key)}
+                    disabled={isCurrentPlan(key) || loadingPlan !== null}
+                  >
+                    {getButtonLabel(key, tier)}
+                    {loadingPlan === key && <span className="spinner" />}
+                  </button>
+
+                  <div className="features">
+                    <h4>Features:</h4>
+                    <ul>
+                      {tier.features.map((feature, idx) => (
+                        <li key={idx}>
+                          <Check size={18} />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-        </section>
 
-        <Footer />
-      </div>
-    </>
+            {/* FAQ */}
+            <div className="pricing-faq">
+              <h2>Frequently Asked Questions</h2>
+              <div className="faq-grid">
+                <div className="faq-item">
+                  <h4>Can I change plans anytime?</h4>
+                  <p>Yes! Upgrade or downgrade at any time. Billing adjusts from the next cycle.</p>
+                </div>
+                <div className="faq-item">
+                  <h4>What payment methods do you accept?</h4>
+                  <p>All major methods via Paystack: cards, bank transfers, USSD, and mobile money.</p>
+                </div>
+                <div className="faq-item">
+                  <h4>Is there a free trial?</h4>
+                  <p>Yes — start on our Free plan, no credit card required. Upgrade when ready.</p>
+                </div>
+                <div className="faq-item">
+                  <h4>What happens when I exceed my limits?</h4>
+                  <p>You'll see a prompt to upgrade. Existing content and accounts are never deleted.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
 
