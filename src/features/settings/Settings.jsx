@@ -2,12 +2,12 @@
 // User account settings and preferences
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { logOut } from '../../services/authService';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { logOut } from '../../services/authService.js';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { db, auth } from '../../services/firebase';
+import { db, auth } from '../../services/firebase.js';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import {

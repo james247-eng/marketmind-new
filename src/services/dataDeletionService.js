@@ -2,7 +2,7 @@
 // Handles data deletion requests for Facebook compliance
 
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebase.js';
 import { deleteUser } from 'firebase/auth';
 
 // Request data deletion (call from frontend)

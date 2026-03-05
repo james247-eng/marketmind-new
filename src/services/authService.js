@@ -9,7 +9,7 @@ import {
   signInWithPopup,
   onAuthStateChanged
 } from 'firebase/auth';
-import { auth, db } from './firebase';
+import { auth, db } from './firebase.js';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 // Sign up with email and password

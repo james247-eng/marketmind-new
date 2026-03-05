@@ -2,7 +2,7 @@
 // Handles saving and retrieving content from Firestore
 
 import { collection, addDoc, query, where, getDocs, orderBy, updateDoc, doc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebase.js';
 
 // Save generated content
 export const saveContent = async (contentData) => {

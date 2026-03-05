@@ -2,9 +2,9 @@
 // Premium pricing page with Paystack payment integration
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../services/firebase';
+import { functions } from '../../services/firebase.js';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import { Check, Zap } from 'lucide-react';

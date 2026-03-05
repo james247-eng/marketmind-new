@@ -2,7 +2,7 @@
 // Provides user authentication state throughout the app
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthChange } from '../services/authService';
+import { onAuthChange } from '../services/authService.js';
 
 // Create context
 const AuthContext = createContext();

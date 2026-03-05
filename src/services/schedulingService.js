@@ -2,7 +2,7 @@
 // Handles post scheduling
 
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebase.js';
 
 // Schedule a post
 export const schedulePost = async (postData) => {

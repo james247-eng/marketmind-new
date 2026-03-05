@@ -3,10 +3,10 @@
 
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import { useAuth } from '../../context/AuthContext';
-import { getConnectedAccounts } from '../../services/socialMediaService';
-import { getMockAnalytics } from '../../services/analyticsService';
+import { db } from '../../services/firebase.js';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { getConnectedAccounts } from '../../services/socialMediaService.js';
+import { getMockAnalytics } from '../../services/analyticsService.js';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import { 

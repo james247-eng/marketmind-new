@@ -4,8 +4,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import { useAuth } from '../../context/AuthContext';
+import { db } from '../../services/firebase.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import { Building2, AlertCircle } from 'lucide-react';

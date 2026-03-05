@@ -4,8 +4,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import { useAuth } from '../../context/AuthContext';
+import { db } from '../../services/firebase.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import { Plus, Building2, Globe, MapPin } from 'lucide-react';

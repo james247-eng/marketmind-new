@@ -1,12 +1,12 @@
 // ContentGenerator.jsx
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { useAuth } from '../context/AuthContext';
-import { generateContent, conductResearch } from '../services/aiService';
-import { uploadFile, validateFile } from '../services/storageService';
-import { saveContent } from '../services/contentService';
-import { getConnectedAccounts, postToMultiplePlatforms } from '../services/socialMediaService';
+import { db } from '../services/firebase.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { generateContent, conductResearch } from '../services/aiService.js';
+import { uploadFile, validateFile } from '../services/storageService.js';
+import { saveContent } from '../services/contentService.js';
+import { getConnectedAccounts, postToMultiplePlatforms } from '../services/socialMediaService.js';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { Sparkles, Upload, X, Loader, Copy, CheckCircle, Send } from 'lucide-react';

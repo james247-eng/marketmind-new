@@ -11,7 +11,7 @@
 // Firebase is used ONLY for Firestore reads/writes.
 
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db } from './firebase.js';
 
 const REDIRECT_URI = window.location.origin + '/accounts';
 
