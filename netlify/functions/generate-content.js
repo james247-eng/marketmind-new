@@ -1,55 +1,48 @@
 // netlify/functions/generate-content.js
-// Handles ALL AI calls (content generation + market research) via Google Gemini.
-// The GEMINI_API_KEY lives only in Netlify environment variables — never in the browser.
+// Handles ALL AI calls (content generation + market research) via Groq API.
+// The GROQ_API_KEY lives only in Netlify environment variables — never in the browser.
 // Firebase Spark plan blocks outbound HTTP, so this runs on Netlify instead.
 
 const https = require('https');
 
-// ─── Gemini API helper ────────────────────────────────────────────────────────
-// Uses Node's built-in https so we don't need axios as a dependency.
+// ─── Groq API helper ──────────────────────────────────────────────────────────
+// Groq uses an OpenAI-compatible API — fast inference, generous free tier.
 
-const callGemini = (prompt) => {
+const callGroq = (prompt) => {
   return new Promise((resolve, reject) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return reject(new Error('Missing environment variable: GEMINI_API_KEY'));
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) return reject(new Error('Missing environment variable: GROQ_API_KEY'));
 
     const body = JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        maxOutputTokens: 1024,
-        temperature: 0.7,
-      },
+      model:       'llama-3.3-70b-versatile',
+      messages:    [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens:  1024,
     });
 
-    // gemini-2.0-flash — current free-tier model as of 2025
-    const options = {
-      hostname: 'generativelanguage.googleapis.com',
-      path: `/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const req = https.request({
+      hostname: 'api.groq.com',
+      path:     '/openai/v1/chat/completions',
+      method:   'POST',
+      headers:  {
+        'Authorization':  `Bearer ${apiKey}`,
+        'Content-Type':   'application/json',
         'Content-Length': Buffer.byteLength(body),
       },
-    };
-
-    const req = https.request(options, (res) => {
+    }, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-
-          // Surface Gemini-level errors clearly
           if (parsed.error) {
-            return reject(new Error(parsed.error.message || 'Gemini API error'));
+            return reject(new Error(parsed.error.message || 'Groq API error'));
           }
-
-          const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!text) return reject(new Error('Gemini returned no content'));
-
+          const text = parsed.choices?.[0]?.message?.content;
+          if (!text) return reject(new Error('Groq returned no content'));
           resolve(text);
         } catch (e) {
-          reject(new Error('Failed to parse Gemini response'));
+          reject(new Error('Failed to parse Groq response'));
         }
       });
     });
@@ -87,7 +80,7 @@ exports.handler = async (event) => {
   try {
     const { type, prompt, tone, businessContext, topic, businessNiche } = JSON.parse(event.body);
 
-    // ── Content generation ──────────────────────────────────────────────────
+    // ── Content generation ────────────────────────────────────────────────────
     if (type === 'generate') {
       if (!prompt || !tone || !businessContext) {
         return {
@@ -97,7 +90,7 @@ exports.handler = async (event) => {
         };
       }
 
-      const geminiPrompt = `You are a professional marketing copywriter specializing in ${businessContext}.
+      const groqPrompt = `You are a professional marketing copywriter specializing in ${businessContext}.
 
 Generate compelling social media content with the following requirements:
 - Tone: ${tone}
@@ -120,7 +113,7 @@ Use this exact structure:
   "youtube": "..."
 }`;
 
-      const content = await callGemini(geminiPrompt);
+      const content = await callGroq(groqPrompt);
 
       return {
         statusCode: 200,
@@ -129,7 +122,7 @@ Use this exact structure:
       };
     }
 
-    // ── Market research ─────────────────────────────────────────────────────
+    // ── Market research ───────────────────────────────────────────────────────
     if (type === 'research') {
       if (!topic || !businessNiche) {
         return {
@@ -139,7 +132,7 @@ Use this exact structure:
         };
       }
 
-      const geminiPrompt = `You are a market research analyst specializing in the ${businessNiche} industry.
+      const groqPrompt = `You are a market research analyst specializing in the ${businessNiche} industry.
 
 Research current trends and insights about: "${topic}"
 
@@ -160,7 +153,7 @@ Use this exact structure:
   "competitorInsights": "brief summary"
 }`;
 
-      const insights = await callGemini(geminiPrompt);
+      const insights = await callGroq(groqPrompt);
 
       return {
         statusCode: 200,
@@ -169,7 +162,6 @@ Use this exact structure:
       };
     }
 
-    // Unknown type
     return {
       statusCode: 400,
       headers,
