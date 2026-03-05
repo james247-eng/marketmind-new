@@ -12,8 +12,6 @@ import { db } from './firebase';
 const REDIRECT_URI = window.location.origin + '/accounts';
 
 // ─── Netlify Function Helper ──────────────────────────────────────────────────
-// Central helper for all OAuth code exchanges via Netlify.
-// oauth-exchange.js on Netlify handles the secret keys server-side.
 
 const exchangeViaNetlify = async (platform, code, userId) => {
   const response = await fetch('/.netlify/functions/oauth-exchange', {
@@ -23,7 +21,7 @@ const exchangeViaNetlify = async (platform, code, userId) => {
       platform,
       code,
       redirectUri: REDIRECT_URI,
-      userId, // Passed for logging purposes on the Netlify side
+      userId,
     }),
   });
 
@@ -33,14 +31,10 @@ const exchangeViaNetlify = async (platform, code, userId) => {
     throw new Error(data.error || `Failed to exchange ${platform} token`);
   }
 
-  // Netlify function returns a flat object:
-  // { success, platform, accountId, accountName, email, accessToken, refreshToken, expiresIn, scope }
   return data;
 };
 
 // ─── Save Account to Firestore ────────────────────────────────────────────────
-// Shared helper to persist a connected account. Keeps the socialAccounts
-// collection structure identical to the original implementation.
 
 const saveAccountToFirestore = async (userId, platform, tokenData) => {
   await addDoc(collection(db, 'socialAccounts'), {
@@ -60,33 +54,26 @@ const saveAccountToFirestore = async (userId, platform, tokenData) => {
 // =============== FACEBOOK / INSTAGRAM ========================================
 
 export const connectFacebook = () => {
-  // App ID is public — safe to expose in the frontend for the OAuth redirect.
   const clientId = import.meta.env.VITE_FACEBOOK_APP_ID || 'placeholder';
   const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish';
 
+  // IMPORTANT: every connect* function must end with &state=<platformId>
+  // so SocialAccounts.jsx knows which callback handler to invoke on return.
   const authUrl =
     `https://www.facebook.com/v18.0/dialog/oauth` +
     `?client_id=${clientId}` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
     `&scope=${scope}` +
     `&response_type=code` +
-        `&state=facebook`;   // ✅ add this
-
+    `&state=facebook`;
 
   window.location.href = authUrl;
 };
 
 export const handleFacebookCallback = async (code, userId) => {
   try {
-    // Previously used Firebase httpsCallable('exchangeFacebookToken').
-    // Now calls the Netlify function so the FACEBOOK_APP_SECRET never
-    // touches the client and Firebase billing is not triggered.
     const tokenData = await exchangeViaNetlify('facebook', code, userId);
-
-    // The old Firebase function returned an array of Pages; the Netlify
-    // function returns a single account object. Save it the same way.
     await saveAccountToFirestore(userId, 'facebook', tokenData);
-
     return { success: true };
   } catch (error) {
     console.error('Facebook auth error:', error);
@@ -96,16 +83,10 @@ export const handleFacebookCallback = async (code, userId) => {
 
 export const postToFacebook = async (pageId, accessToken, content, imageUrl) => {
   try {
-    // Posting still goes through Firebase Cloud Functions because it is a
-    // write action (not an outbound token exchange) and already existed.
-    // If you hit billing issues here too, mirror the pattern above and
-    // create a `post-to-platform.js` Netlify function.
     const { httpsCallable } = await import('firebase/functions');
     const { functions } = await import('./firebase');
-
     const postFunction = httpsCallable(functions, 'postToFacebook');
     const result = await postFunction({ pageId, accessToken, content, imageUrl });
-
     return {
       success: result.data.success,
       postId:  result.data.postId,
@@ -127,14 +108,14 @@ export const connectTikTok = () => {
     `?client_key=${clientKey}` +
     `&scope=${scope}` +
     `&response_type=code` +
-    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&state=tiktok`;
 
   window.location.href = authUrl;
 };
 
 export const handleTikTokCallback = async (code, userId) => {
   try {
-    // Moved to Netlify to keep VITE_TIKTOK_CLIENT_SECRET off the client.
     const tokenData = await exchangeViaNetlify('tiktok', code, userId);
     await saveAccountToFirestore(userId, 'tiktok', tokenData);
     return { success: true };
@@ -167,9 +148,7 @@ export const postToTikTok = async (accessToken, videoUrl, caption) => {
         },
       }),
     });
-
     const data = await response.json();
-
     return {
       success: !!data.data?.publish_id,
       postId:  data.data?.publish_id,
@@ -201,7 +180,6 @@ export const connectTwitter = () => {
 
 export const handleTwitterCallback = async (code, userId) => {
   try {
-    // Moved to Netlify to keep VITE_TWITTER_API_SECRET off the client.
     const tokenData = await exchangeViaNetlify('twitter', code, userId);
     await saveAccountToFirestore(userId, 'twitter', tokenData);
     return { success: true };
@@ -214,7 +192,6 @@ export const handleTwitterCallback = async (code, userId) => {
 export const postToTwitter = async (accessToken, content, mediaUrl) => {
   try {
     let mediaId = null;
-
     if (mediaUrl) {
       const mediaResponse = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
         method: 'POST',
@@ -227,10 +204,8 @@ export const postToTwitter = async (accessToken, content, mediaUrl) => {
       const mediaData = await mediaResponse.json();
       mediaId = mediaData.media_id_string;
     }
-
     const tweetBody = { text: content };
     if (mediaId) tweetBody.media = { media_ids: [mediaId] };
-
     const response = await fetch('https://api.twitter.com/2/tweets', {
       method: 'POST',
       headers: {
@@ -239,9 +214,7 @@ export const postToTwitter = async (accessToken, content, mediaUrl) => {
       },
       body: JSON.stringify(tweetBody),
     });
-
     const data = await response.json();
-
     return {
       success: !!data.data?.id,
       postId:  data.data?.id,
@@ -256,25 +229,20 @@ export const postToTwitter = async (accessToken, content, mediaUrl) => {
 
 export const postToInstagram = async (accountId, accessToken, imageUrl, caption) => {
   try {
-    // Step 1: Create media container
     const containerResponse = await fetch(`https://graph.facebook.com/v18.0/${accountId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image_url: imageUrl, caption, access_token: accessToken }),
     });
-
     const containerData = await containerResponse.json();
     if (containerData.error) throw new Error(containerData.error.message);
 
-    // Step 2: Publish media
     const publishResponse = await fetch(`https://graph.facebook.com/v18.0/${accountId}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ creation_id: containerData.id, access_token: accessToken }),
     });
-
     const publishData = await publishResponse.json();
-
     return {
       success: !publishData.error,
       postId:  publishData.id,
@@ -300,14 +268,14 @@ export const connectYouTube = () => {
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
     `&response_type=code` +
     `&scope=${encodeURIComponent(scope)}` +
-    `&access_type=offline`;
+    `&access_type=offline` +
+    `&state=youtube`;
 
   window.location.href = authUrl;
 };
 
 export const handleYouTubeCallback = async (code, userId) => {
   try {
-    // Moved to Netlify to keep VITE_YOUTUBE_CLIENT_SECRET off the client.
     const tokenData = await exchangeViaNetlify('youtube', code, userId);
     await saveAccountToFirestore(userId, 'youtube', tokenData);
     return { success: true };
@@ -333,9 +301,7 @@ export const postToYouTube = async (accessToken, videoUrl, title, description) =
         }),
       }
     );
-
     const data = await response.json();
-
     return {
       success: !!data.id,
       postId:  data.id,
@@ -375,10 +341,8 @@ export const disconnectAccount = async (accountId) => {
 
 export const postToMultiplePlatforms = async (accounts, content, mediaUrl) => {
   const results = [];
-
   for (const account of accounts) {
     let result;
-
     switch (account.platform) {
       case 'facebook':
         result = await postToFacebook(account.accountId, account.accessToken, content, mediaUrl);
@@ -398,9 +362,7 @@ export const postToMultiplePlatforms = async (accounts, content, mediaUrl) => {
       default:
         result = { success: false, error: 'Unknown platform' };
     }
-
     results.push({ platform: account.platform, accountName: account.accountName, ...result });
   }
-
   return results;
 };
