@@ -10,47 +10,30 @@ export const saveContent = async (contentData) => {
     const docRef = await addDoc(collection(db, 'content'), {
       ...contentData,
       createdAt: new Date().toISOString(),
-      status: 'draft' // draft, scheduled, published
+      status: 'draft',
     });
-
-    return {
-      success: true,
-      contentId: docRef.id
-    };
+    return { success: true, contentId: docRef.id };
   } catch (error) {
     console.error('Error saving content:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 };
 
-// Get content history for a business
-export const getContentHistory = async (businessId) => {
+// Get content history — requires userId to satisfy Firestore security rules
+export const getContentHistory = async (businessId, userId) => {
   try {
     const q = query(
       collection(db, 'content'),
+      where('userId',     '==', userId),      // ← required by security rules
       where('businessId', '==', businessId),
       orderBy('createdAt', 'desc')
     );
-
-    const querySnapshot = await getDocs(q);
-    const contentList = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    return {
-      success: true,
-      content: contentList
-    };
+    const snapshot = await getDocs(q);
+    const content = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    return { success: true, content };
   } catch (error) {
     console.error('Error fetching content:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 };
 
@@ -58,16 +41,12 @@ export const getContentHistory = async (businessId) => {
 export const updateContentStatus = async (contentId, status) => {
   try {
     await updateDoc(doc(db, 'content', contentId), {
-      status: status,
-      updatedAt: new Date().toISOString()
+      status,
+      updatedAt: new Date().toISOString(),
     });
-
     return { success: true };
   } catch (error) {
     console.error('Error updating content:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 };

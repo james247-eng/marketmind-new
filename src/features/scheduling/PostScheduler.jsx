@@ -1,6 +1,6 @@
 // PostScheduler.jsx
 // Schedule posts to social media - SIMPLIFIED VERSION
-
+/*
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase';
@@ -222,7 +222,6 @@ function PostScheduler() {
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <div className="content-area">
           
-          {/* Page Title */}
           <div className="page-header">
             <div>
               <h1>Schedule Posts</h1>
@@ -230,7 +229,6 @@ function PostScheduler() {
             </div>
           </div>
 
-          {/* Error/Success Messages */}
           {error && (
             <div className="alert alert-error">
               <AlertCircle size={18} />
@@ -247,13 +245,12 @@ function PostScheduler() {
 
           <div className="scheduler-layout">
             
-            {/* LEFT SIDE: Schedule New Post Form */}
+            {/* LEFT SIDE: Schedule New Post Form *}
             <div className="scheduler-section">
               <h3>📅 Schedule New Post</h3>
 
               <form onSubmit={handleSchedulePost}>
                 
-                {/* Select Business */}
                 <div className="form-group">
                   <label>Business</label>
                   <select
@@ -273,7 +270,7 @@ function PostScheduler() {
                   </select>
                 </div>
 
-                {/* Select Content */}
+                {/* Select Content *}
                 <div className="form-group">
                   <label>Choose Content to Post</label>
                   <select
@@ -293,7 +290,7 @@ function PostScheduler() {
                   )}
                 </div>
 
-                {/* Select Platforms (Checkboxes) */}
+                {/* Select Platforms (Checkboxes) 
                 <div className="form-group">
                   <label>Choose Platforms</label>
                   <div className="platform-list">
@@ -316,7 +313,7 @@ function PostScheduler() {
                   </div>
                 </div>
 
-                {/* Select Date and Time */}
+                {/* Select Date and Time 
                 <div className="form-row">
                   <div className="form-group">
                     <label>📅 Date</label>
@@ -340,7 +337,7 @@ function PostScheduler() {
                   </div>
                 </div>
 
-                {/* Submit Button */}
+                {/* Submit Button 
                 <button
                   type="submit"
                   className="btn-schedule"
@@ -352,7 +349,7 @@ function PostScheduler() {
               </form>
             </div>
 
-            {/* RIGHT SIDE: Upcoming Scheduled Posts */}
+            {/* RIGHT SIDE: Upcoming Scheduled Posts 
             <div className="scheduler-section">
               <h3>📋 Upcoming Posts</h3>
 
@@ -367,7 +364,7 @@ function PostScheduler() {
                   {upcomingPosts.map(post => (
                     <div key={post.id} className="post-card">
                       
-                      {/* When it will post */}
+                      {/* When it will post 
                       <div className="post-time">
                         <Clock size={16} />
                         <strong>
@@ -376,12 +373,12 @@ function PostScheduler() {
                         </strong>
                       </div>
 
-                      {/* Content preview */}
+                      {/* Content preview 
                       <p className="post-preview">
                         {post.content.slice(0, 100)}...
                       </p>
 
-                      {/* Which platforms */}
+                      {/* Which platforms }
                       <div className="post-platforms">
                         {post.platforms.map((p, index) => (
                           <span key={index} className="platform-badge">
@@ -390,7 +387,7 @@ function PostScheduler() {
                         ))}
                       </div>
 
-                      {/* Status and Cancel button */}
+                      {/* Status and Cancel button }
                       <div className="post-footer">
                         <span className={`status-${post.status}`}>
                           {post.status}
@@ -403,6 +400,307 @@ function PostScheduler() {
                           >
                             <X size={16} />
                             Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default PostScheduler;
+
+*/
+
+// PostScheduler.jsx
+// Schedule posts to social media
+
+import { useState, useEffect } from 'react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { useAuth } from '../context/AuthContext';
+import { getConnectedAccounts } from '../services/socialMediaService';
+import { getContentHistory } from '../services/contentService';
+import { schedulePost, getScheduledPosts, cancelScheduledPost } from '../services/schedulingService';
+import Sidebar from '../components/Sidebar';
+import Header from '../components/Header';
+import { Calendar, Clock, Send, X, AlertCircle, CheckCircle } from 'lucide-react';
+import './PostScheduler.css';
+
+// Helper to show a readable label for saved content in the dropdown
+const contentLabel = (item) => {
+  if (!item.content) return 'Untitled';
+  // content may be a JSON string — show the prompt if available, else truncate
+  if (item.prompt) return item.prompt.slice(0, 60);
+  try {
+    const parsed = JSON.parse(item.content);
+    const first  = parsed.twitter || parsed.linkedin || parsed.instagram || '';
+    return first.slice(0, 60) || 'Saved content';
+  } catch {
+    return item.content.slice(0, 60);
+  }
+};
+
+function PostScheduler() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { currentUser } = useAuth();
+
+  const [businesses,        setBusinesses]        = useState([]);
+  const [selectedBusiness,  setSelectedBusiness]  = useState('');
+  const [savedContent,      setSavedContent]      = useState([]);
+  const [connectedAccounts, setConnectedAccounts] = useState([]);
+  const [upcomingPosts,     setUpcomingPosts]     = useState([]);
+
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState('');
+  const [success, setSuccess] = useState('');
+
+  const [scheduleForm, setScheduleForm] = useState({
+    contentId: '', platforms: [], date: '', time: '',
+  });
+
+  // ─── Load businesses + accounts on mount ────────────────────────────────────
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Businesses
+    (async () => {
+      try {
+        const q = query(collection(db, 'businesses'), where('userId', '==', currentUser.uid));
+        const snap = await getDocs(q);
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setBusinesses(list);
+        if (list.length > 0) setSelectedBusiness(list[0].id);
+      } catch (err) { console.error('Error loading businesses:', err); }
+    })();
+
+    // Connected social accounts
+    (async () => {
+      const result = await getConnectedAccounts(currentUser.uid);
+      if (result.success) setConnectedAccounts(result.accounts);
+    })();
+  }, [currentUser]);
+
+  // ─── Load content + scheduled posts when business changes ───────────────────
+
+  useEffect(() => {
+    if (!selectedBusiness || !currentUser) return;
+
+    // Pass userId so Firestore rules are satisfied
+    (async () => {
+      const result = await getContentHistory(selectedBusiness, currentUser.uid);
+      if (result.success) setSavedContent(result.content);
+      else console.error('Error loading content:', result.error);
+    })();
+
+    (async () => {
+      const result = await getScheduledPosts(selectedBusiness, currentUser.uid);
+      if (result.success) setUpcomingPosts(result.posts);
+      else console.error('Error loading scheduled posts:', result.error);
+    })();
+  }, [selectedBusiness, currentUser]);
+
+  // ─── Platform toggle ─────────────────────────────────────────────────────────
+
+  const togglePlatform = (platformName) => {
+    setScheduleForm(prev => ({
+      ...prev,
+      platforms: prev.platforms.includes(platformName)
+        ? prev.platforms.filter(p => p !== platformName)
+        : [...prev.platforms, platformName],
+    }));
+  };
+
+  // ─── Schedule post ───────────────────────────────────────────────────────────
+
+  const handleSchedulePost = async (e) => {
+    e.preventDefault();
+    setError(''); setSuccess('');
+
+    if (!scheduleForm.contentId)            { setError('Please select content to post'); return; }
+    if (scheduleForm.platforms.length === 0) { setError('Please select at least one platform'); return; }
+    if (!scheduleForm.date || !scheduleForm.time) { setError('Please select a date and time'); return; }
+
+    setLoading(true);
+    try {
+      const content           = savedContent.find(c => c.id === scheduleForm.contentId);
+      const scheduledDateTime = new Date(`${scheduleForm.date}T${scheduleForm.time}`);
+      const selectedAccounts  = connectedAccounts.filter(a => scheduleForm.platforms.includes(a.platform));
+
+      const result = await schedulePost({
+        businessId:    selectedBusiness,
+        userId:        currentUser.uid,
+        contentId:     scheduleForm.contentId,
+        content:       content.content,
+        imageUrl:      content.imageUrl || null,
+        platforms:     selectedAccounts.map(a => ({
+          platform: a.platform, accountId: a.accountId, accountName: a.accountName,
+        })),
+        scheduledTime: scheduledDateTime.toISOString(),
+      });
+
+      if (result.success) {
+        setSuccess('Post scheduled successfully!');
+        const refreshed = await getScheduledPosts(selectedBusiness, currentUser.uid);
+        if (refreshed.success) setUpcomingPosts(refreshed.posts);
+        setScheduleForm({ contentId: '', platforms: [], date: '', time: '' });
+      } else {
+        setError('Failed to schedule post');
+      }
+    } catch (err) {
+      setError('Something went wrong. Please try again.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Cancel post ─────────────────────────────────────────────────────────────
+
+  const handleCancelPost = async (postId) => {
+    if (!confirm('Cancel this scheduled post?')) return;
+    const result = await cancelScheduledPost(postId);
+    if (result.success) {
+      setSuccess('Post cancelled.');
+      setUpcomingPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'cancelled' } : p));
+    } else {
+      setError('Failed to cancel post.');
+    }
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="app">
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main className="main-content">
+        <Header onMenuClick={() => setSidebarOpen(true)} />
+        <div className="content-area">
+
+          <div className="page-header">
+            <div>
+              <h1>Schedule Posts</h1>
+              <p>Plan when your content gets posted to social media</p>
+            </div>
+          </div>
+
+          {error   && <div className="alert alert-error"><AlertCircle size={18} />{error}</div>}
+          {success && <div className="alert alert-success"><CheckCircle size={18} />{success}</div>}
+
+          <div className="scheduler-layout">
+
+            {/* ── LEFT: Schedule form ── */}
+            <div className="scheduler-section">
+              <h3>📅 Schedule New Post</h3>
+
+              <form onSubmit={handleSchedulePost}>
+
+                <div className="form-group">
+                  <label>Business</label>
+                  <select value={selectedBusiness} onChange={(e) => setSelectedBusiness(e.target.value)} required>
+                    {businesses.length === 0
+                      ? <option>No businesses found</option>
+                      : businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Choose Content to Post</label>
+                  <select value={scheduleForm.contentId}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, contentId: e.target.value })} required>
+                    <option value="">-- Select content --</option>
+                    {savedContent.map(c => (
+                      <option key={c.id} value={c.id}>{contentLabel(c)}...</option>
+                    ))}
+                  </select>
+                  {savedContent.length === 0 && (
+                    <p className="hint-text">No saved content. <a href="/generate">Generate content first</a></p>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label>Choose Platforms</label>
+                  <div className="platform-list">
+                    {connectedAccounts.length === 0 ? (
+                      <p className="hint-text">No connected accounts. <a href="/accounts">Connect platforms first</a></p>
+                    ) : (
+                      connectedAccounts.map(account => (
+                        <label key={account.id} className="checkbox-item">
+                          <input
+                            type="checkbox"
+                            checked={scheduleForm.platforms.includes(account.platform)}
+                            onChange={() => togglePlatform(account.platform)}
+                          />
+                          <span>{account.platform.toUpperCase()} — {account.accountName}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>📅 Date</label>
+                    <input type="date" value={scheduleForm.date}
+                      onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })}
+                      min={new Date().toISOString().split('T')[0]} required />
+                  </div>
+                  <div className="form-group">
+                    <label>🕐 Time</label>
+                    <input type="time" value={scheduleForm.time}
+                      onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })} required />
+                  </div>
+                </div>
+
+                <button type="submit" className="btn-schedule"
+                  disabled={loading || connectedAccounts.length === 0 || savedContent.length === 0}>
+                  <Send size={20} />
+                  {loading ? 'Scheduling...' : 'Schedule Post'}
+                </button>
+              </form>
+            </div>
+
+            {/* ── RIGHT: Upcoming posts ── */}
+            <div className="scheduler-section">
+              <h3>📋 Upcoming Posts</h3>
+
+              {upcomingPosts.length === 0 ? (
+                <div className="empty-state-small">
+                  <Calendar size={48} />
+                  <p>No scheduled posts yet</p>
+                  <small>Schedule your first post using the form</small>
+                </div>
+              ) : (
+                <div className="posts-list">
+                  {upcomingPosts.map(post => (
+                    <div key={post.id} className="post-card">
+                      <div className="post-time">
+                        <Clock size={16} />
+                        <strong>
+                          {new Date(post.scheduledTime).toLocaleDateString()} at{' '}
+                          {new Date(post.scheduledTime).toLocaleTimeString()}
+                        </strong>
+                      </div>
+                      <p className="post-preview">{contentLabel(post).slice(0, 100)}...</p>
+                      <div className="post-platforms">
+                        {post.platforms?.map((p, i) => (
+                          <span key={i} className="platform-badge">{p.platform}</span>
+                        ))}
+                      </div>
+                      <div className="post-footer">
+                        <span className={`status-${post.status}`}>{post.status}</span>
+                        {post.status === 'scheduled' && (
+                          <button className="btn-cancel-post" onClick={() => handleCancelPost(post.id)}>
+                            <X size={16} /> Cancel
                           </button>
                         )}
                       </div>

@@ -20,3 +20,34 @@
 .empty-state p {
   color: var(--gray-700);
 }
+
+/* Add these to ContentGenerator.css */
+
+.platform-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.platform-tab { padding: 6px 12px; border: 1px solid #ddd; border-radius: 20px; cursor: pointer; background: white; font-size: 13px; }
+.platform-tab.active { background: #7c3aed; color: white; border-color: #7c3aed; }
+.platform-content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.char-count { font-size: 12px; color: #888; }
+.char-count.over-limit { color: #ef4444; font-weight: bold; }
+.platform-textarea { width: 100%; border-radius: 8px; padding: 12px; border: 1px solid #ddd; resize: vertical; font-family: inherit; box-sizing: border-box; }
+.platform-textarea.over-limit { border-color: #ef4444; }
+.btn-copy { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px; background: white; }
+
+/* Post Now section */
+.post-now-section { margin-top: 20px; padding: 16px; background: #f8f5ff; border-radius: 12px; border: 1px solid #e9d8fd; }
+.post-now-section h4 { margin: 0 0 4px; font-size: 15px; color: #5b21b6; }
+.post-now-hint { font-size: 13px; color: #666; margin: 0 0 12px; }
+.account-checkboxes { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.account-checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.account-checkbox-label input { width: 16px; height: 16px; cursor: pointer; }
+.account-platform-icon { font-size: 18px; }
+.btn-post-now { display: flex; align-items: center; gap: 8px; padding: 10px 20px; background: #7c3aed; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.btn-post-now:disabled { opacity: 0.6; cursor: not-allowed; }
+.no-accounts-hint { font-size: 13px; color: #888; margin-top: 16px; text-align: center; }
+.no-accounts-hint a { color: #7c3aed; text-decoration: underline; }
+
+/* Post results */
+.post-results { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.post-result { padding: 8px 12px; border-radius: 6px; font-size: 13px; }
+.post-result.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.post-result.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
