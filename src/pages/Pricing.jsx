@@ -4,11 +4,11 @@
 // NOT Firebase — Paystack API calls are outbound HTTP blocked on Spark plan.
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import Sidebar from '../../components/Sidebar';
-import Header from '../../components/Header';
+import { db } from '../services/firebase';
+import Sidebar from '../components/Sidebar';
+import Header from '../components/Header';
 import { Check, AlertCircle } from 'lucide-react';
 import './Pricing.css';
 
