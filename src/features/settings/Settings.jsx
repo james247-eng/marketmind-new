@@ -8,8 +8,8 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { db, auth } from '../../services/firebase.js';
-import Sidebar from '../../components/Sidebar';
-import Header from '../../components/Header';
+import Sidebar from '../../components/Sidebar.jsx';
+import Header from '../../components/Header.jsx';
 import {
   User,
   Mail,

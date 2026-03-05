@@ -1,7 +1,7 @@
 // Header.jsx
 import './Header.css';
 import { Search, Bell, ChevronDown, Menu, LogOut } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 import { logOut } from '../services/authService';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';

@@ -2,7 +2,7 @@
 // Connect and manage social media accounts
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext.jsx';
 import {
   getConnectedAccounts,
   disconnectAccount,
@@ -15,8 +15,8 @@ import {
   handleTwitterCallback,
   handleYouTubeCallback,
 } from '../../services/socialMediaService';
-import Sidebar from '../../components/Sidebar';
-import Header from '../../components/Header';
+import Sidebar from '../../components/Sidebar.jsx';
+import Header from '../../components/Header.jsx';
 import { Link2, X, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import './SocialAccounts.css';
 

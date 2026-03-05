@@ -7,8 +7,8 @@ import { db } from '../../services/firebase.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { getConnectedAccounts } from '../../services/socialMediaService.js';
 import { getMockAnalytics } from '../../services/analyticsService.js';
-import Sidebar from '../../components/Sidebar';
-import Header from '../../components/Header';
+import Sidebar from '../../components/Sidebar.jsx';
+import Header from '../../components/Header.jsx';
 import { 
   TrendingUp, 
   Users, 

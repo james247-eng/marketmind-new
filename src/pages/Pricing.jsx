@@ -7,8 +7,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase.js';
-import Sidebar from '../components/Sidebar';
-import Header from '../components/Header';
+import Sidebar from '../components/Sidebar.jsx';
+import Header from '../components/Header.jsx';
 import { Check, AlertCircle } from 'lucide-react';
 import './Pricing.css';
 

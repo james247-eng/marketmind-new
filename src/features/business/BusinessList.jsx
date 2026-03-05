@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import { useAuth } from '../../context/AuthContext.jsx';
-import Sidebar from '../../components/Sidebar';
-import Header from '../../components/Header';
+import Sidebar from '../../components/Sidebar.jsx';
+import Header from '../../components/Header.jsx';
 import { Plus, Building2, Globe, MapPin } from 'lucide-react';
 import './BusinessList.css';
 

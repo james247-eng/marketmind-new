@@ -2,7 +2,7 @@
 // Wrapper that redirects to login if user is not authenticated
 
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 
 function ProtectedRoute({ children }) {
   const { currentUser, loading } = useAuth();

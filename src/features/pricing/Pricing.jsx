@@ -5,8 +5,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../services/firebase.js';
-import Sidebar from '../../components/Sidebar';
-import Header from '../../components/Header';
+import Sidebar from '../../components/Sidebar.jsx';
+import Header from '../../components/Header.jsx';
 import { Check, Zap } from 'lucide-react';
 import './Pricing.css';
 

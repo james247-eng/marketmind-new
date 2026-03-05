@@ -1,10 +1,10 @@
 // ContentHistory.jsx
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../services/firebase.js';
-import Sidebar from '../components/Sidebar';
-import Header from '../components/Header';
+import Sidebar from '../../components/Sidebar.jsx';
+import Header from '../../components/Header.jsx';
 import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import './ContentHistory.css';
 
