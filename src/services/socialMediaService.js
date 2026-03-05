@@ -14,7 +14,7 @@ const REDIRECT_URI = window.location.origin + '/accounts';
 // ─── Netlify Function Helper ──────────────────────────────────────────────────
 
 const exchangeViaNetlify = async (platform, code, userId) => {
-  const response = await fetch('/.netlify/functions/oauth-exchange', {
+  const response = await fetch('/.netlify/functions/oauthExchange', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
