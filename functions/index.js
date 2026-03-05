@@ -1,274 +1,205 @@
 /**
  * Firebase Cloud Functions for Market Mind
- * 
- * These functions run on Google servers, keeping API keys secure.
+ *
+ * SPARK PLAN RULES — functions in this file must NEVER make outbound HTTP
+ * requests to external APIs (Gemini, Facebook, Twitter, etc.).
+ * Any function that needs to call an external API lives in Netlify Functions instead:
+ *
+ *   OAuth token exchange  →  netlify/functions/oauth-exchange.js
+ *   AI content generation →  netlify/functions/generate-content.js
+ *   AI market research    →  netlify/functions/conduct-research.js
+ *   Post to Facebook      →  netlify/functions/post-to-facebook.js
+ *
+ * What IS allowed here on Spark:
+ *   - Reading / writing Firestore
+ *   - Auth checks
+ *   - Returning config values stored in Firebase environment variables
+ *
  * Deploy with: firebase deploy --only functions
- * 
- * Install dependencies first:
- * cd functions
- * npm install firebase-admin firebase-functions axios
+ * Install deps: cd functions && npm install firebase-admin firebase-functions
  */
 
 const functions = require('firebase-functions');
-const admin = require('firebase-admin');
-const axios = require('axios');
+const admin     = require('firebase-admin');
 
 admin.initializeApp();
 const db = admin.firestore();
 
-// ==================== SUBSCRIPTION TIERS ====================
-// FREE tier: 5 posts/month, 1 social media link only, no research
+// ==================== SUBSCRIPTION TIERS =====================================
+
 const TIERS = {
   free: {
-    monthlyPostLimit: 5,
-    monthlyResearchLimit: 0,
-    maxSocialConnections: 1, // Only 1 social platform allowed
-    maxFileSize: 5, // MB
-    features: ['basic-content']
+    monthlyPostLimit:      5,
+    monthlyResearchLimit:  0,
+    maxSocialConnections:  1,
+    maxFileSize:           5,   // MB
+    features: ['basic-content'],
   },
   pro: {
-    monthlyPostLimit: 100,
-    monthlyResearchLimit: 50,
-    maxSocialConnections: 5,
-    maxFileSize: 50,
-    features: ['advanced-content', 'multi-business', 'scheduling', 'youtube']
+    monthlyPostLimit:      100,
+    monthlyResearchLimit:  50,
+    maxSocialConnections:  5,
+    maxFileSize:           50,
+    features: ['advanced-content', 'multi-business', 'scheduling', 'youtube'],
   },
   enterprise: {
-    monthlyPostLimit: 'unlimited',
-    monthlyResearchLimit: 'unlimited',
-    maxSocialConnections: 'unlimited',
-    maxFileSize: 100,
-    features: ['all', 'priority-support', 'custom-integrations']
-  }
+    monthlyPostLimit:      'unlimited',
+    monthlyResearchLimit:  'unlimited',
+    maxSocialConnections:  'unlimited',
+    maxFileSize:           100,
+    features: ['all', 'priority-support', 'custom-integrations'],
+  },
 };
 
-// ==================== HELPER FUNCTIONS ====================
+// ==================== HELPERS ================================================
 
-/**
- * Get user's current subscription info
- */
 async function getUserSubscription(userId) {
   const userDoc = await db.collection('users').doc(userId).get();
   if (!userDoc.exists) throw new Error('User not found');
-  
+
   const userData = userDoc.data();
   return {
-    tier: userData.subscriptionTier || 'free',
-    since: userData.subscriptionSince || userData.createdAt,
-    status: userData.subscriptionStatus || 'active'
+    tier:   userData.subscriptionTier   || 'free',
+    since:  userData.subscriptionSince  || userData.createdAt,
+    status: userData.subscriptionStatus || 'active',
   };
 }
 
-/**
- * Check if user has exceeded monthly limit
- */
 async function checkMonthlyLimit(userId, type) {
   const subscription = await getUserSubscription(userId);
   const tier = TIERS[subscription.tier];
-  
-  if (type === 'post' && tier.monthlyPostLimit === 'unlimited') return true;
+
+  if (type === 'post'     && tier.monthlyPostLimit     === 'unlimited') return true;
   if (type === 'research' && tier.monthlyResearchLimit === 'unlimited') return true;
-  
-  // Get current month usage
-  const now = new Date();
+
+  const now        = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  
+
   const usageRef = db.collection('usage').doc(userId);
   const usageDoc = await usageRef.get();
-  
+
   if (!usageDoc.exists) {
-    await usageRef.set({
-      postsThisMonth: 0,
-      researchThisMonth: 0,
-      monthStart: monthStart
-    });
+    await usageRef.set({ postsThisMonth: 0, researchThisMonth: 0, monthStart });
     return true;
   }
-  
+
   const usage = usageDoc.data();
-  const limit = type === 'post' ? tier.monthlyPostLimit : tier.monthlyResearchLimit;
-  
-  if (usage.monthStart < monthStart) {
-    // New month, reset counters
-    await usageRef.update({
-      postsThisMonth: 0,
-      researchThisMonth: 0,
-      monthStart: monthStart
-    });
+
+  // Reset counters if we've rolled into a new month
+  if (usage.monthStart.toDate() < monthStart) {
+    await usageRef.update({ postsThisMonth: 0, researchThisMonth: 0, monthStart });
     return true;
   }
-  
-  const currentUsage = type === 'post' ? usage.postsThisMonth : usage.researchThisMonth;
+
+  const limit        = type === 'post' ? tier.monthlyPostLimit : tier.monthlyResearchLimit;
+  const currentUsage = type === 'post' ? usage.postsThisMonth  : usage.researchThisMonth;
   return currentUsage < limit;
 }
 
-/**
- * Increment usage counter
- */
 async function incrementUsage(userId, type) {
   const usageRef = db.collection('usage').doc(userId);
-  if (type === 'post') {
-    await usageRef.update({ postsThisMonth: admin.firestore.FieldValue.increment(1) });
-  } else if (type === 'research') {
-    await usageRef.update({ researchThisMonth: admin.firestore.FieldValue.increment(1) });
-  }
+  const field    = type === 'post' ? 'postsThisMonth' : 'researchThisMonth';
+  await usageRef.update({ [field]: admin.firestore.FieldValue.increment(1) });
 }
 
-// ==================== CLOUD FUNCTIONS ====================
+// ==================== CLOUD FUNCTIONS ========================================
 
 /**
- * Generate marketing content using Google Gemini API (FREE)
- * Called from: ContentGenerator.jsx
+ * checkUsageLimit
+ * Called by the frontend BEFORE hitting the Netlify AI functions.
+ * Returns whether the user is allowed to generate, and their current usage.
+ * Pure Firestore — safe on Spark plan.
  */
-exports.generateContent = functions.https.onCall(async (data, context) => {
-  // Check authentication
+exports.checkUsageLimit = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
+  }
+
+  const userId     = context.auth.uid;
+  const { type }   = data; // 'post' | 'research'
+
+  const subscription = await getUserSubscription(userId);
+  const tier         = TIERS[subscription.tier];
+  const canProceed   = await checkMonthlyLimit(userId, type);
+
+  // Fetch current counters for display in the UI
+  const usageDoc  = await db.collection('usage').doc(userId).get();
+  const usage     = usageDoc.exists ? usageDoc.data() : { postsThisMonth: 0, researchThisMonth: 0 };
+
+  return {
+    allowed:      canProceed,
+    tier:         subscription.tier,
+    used:         type === 'post' ? usage.postsThisMonth : usage.researchThisMonth,
+    limit:        type === 'post' ? tier.monthlyPostLimit : tier.monthlyResearchLimit,
+    upgradeMessage: !canProceed
+      ? (type === 'post'
+          ? 'You have reached your monthly post limit. Upgrade to Pro for 100/month.'
+          : 'Research is not available on the Free plan. Upgrade to Pro.')
+      : null,
+  };
+});
+
+/**
+ * recordContentGeneration
+ * Called by the frontend AFTER a successful Netlify AI response.
+ * Increments the usage counter and saves the result to Firestore history.
+ * Pure Firestore — safe on Spark plan.
+ */
+exports.recordContentGeneration = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
   }
 
   const userId = context.auth.uid;
-  const { prompt, tone, businessContext } = data;
+  const { prompt, tone, businessContext, content } = data;
 
-  try {
-    // Check monthly limit
-    const canGenerate = await checkMonthlyLimit(userId, 'post');
-    if (!canGenerate) {
-      throw new functions.https.HttpsError(
-        'resource-exhausted',
-        'You have reached your monthly post generation limit (5 posts). Upgrade to Pro for 100/month.'
-      );
-    }
+  await incrementUsage(userId, 'post');
 
-    // Call Google Gemini API (FREE, 60 calls/min)
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{
-            text: `You are a professional marketing copywriter specializing in ${businessContext}.
+  await db.collection('content').add({
+    userId,
+    prompt,
+    tone,
+    businessContext,
+    content,
+    createdAt: admin.firestore.Timestamp.now(),
+    type: 'generated',
+  });
 
-Generate compelling social media content with the following requirements:
-- Tone: ${tone}
-- Task: ${prompt}
-
-Create posts optimized for:
-1. Twitter/X (280 characters with relevant hashtags)
-2. LinkedIn (professional version, slightly longer)
-3. Instagram (engaging, with emojis and hashtags)
-4. TikTok (trendy, casual tone)
-5. YouTube (title and description, engaging hook)
-
-Format as JSON with keys: twitter, linkedin, instagram, tiktok, youtube.`
-          }]
-        }],
-        generationConfig: {
-          maxOutputTokens: 1024,
-          temperature: 0.7
-        }
-      }
-    );
-
-    const content = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!content) throw new Error('No content generated');
-
-    // Increment usage
-    await incrementUsage(userId, 'post');
-
-    // Save to Firestore for history
-    await db.collection('content').add({
-      userId,
-      prompt,
-      tone,
-      businessContext,
-      content,
-      createdAt: admin.firestore.Timestamp.now(),
-      type: 'generated'
-    });
-
-    return {
-      success: true,
-      content
-    };
-  } catch (error) {
-    console.error('Content generation error:', error);
-    throw new functions.https.HttpsError('internal', error.message);
-  }
+  return { success: true };
 });
 
 /**
- * Conduct market research using Google Gemini API (FREE, replaces Perplexity)
+ * recordResearch
+ * Called by the frontend AFTER a successful Netlify research response.
+ * Increments the usage counter and saves insights to Firestore history.
+ * Pure Firestore — safe on Spark plan.
  */
-exports.conductResearch = functions.https.onCall(async (data, context) => {
+exports.recordResearch = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
   }
 
   const userId = context.auth.uid;
-  const { topic, businessNiche } = data;
+  const { topic, businessNiche, insights } = data;
 
-  try {
-    // Check monthly limit
-    const canResearch = await checkMonthlyLimit(userId, 'research');
-    if (!canResearch) {
-      throw new functions.https.HttpsError(
-        'resource-exhausted',
-        'Research not available on Free plan. Upgrade to Pro for market insights.'
-      );
-    }
+  await incrementUsage(userId, 'research');
 
-    // Call Google Gemini API (FREE)
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{
-            text: `Research current trends and insights about: "${topic}" in the ${businessNiche} industry. 
-        
-Provide:
-1. Top 5 current trends
-2. Key statistics and data
-3. Emerging opportunities
-4. Recommended content angles
-5. Competitor insights
+  await db.collection('content').add({
+    userId,
+    topic,
+    businessNiche,
+    research: insights,
+    createdAt: admin.firestore.Timestamp.now(),
+    type: 'research',
+  });
 
-Format as JSON for easy parsing.`
-          }]
-        }],
-        generationConfig: {
-          maxOutputTokens: 1024,
-          temperature: 0.7
-        }
-      }
-    );
-
-    const insights = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!insights) throw new Error('No insights generated');
-
-    // Increment usage
-    await incrementUsage(userId, 'research');
-
-    // Save research
-    await db.collection('content').add({
-      userId,
-      topic,
-      businessNiche,
-      research: insights,
-      createdAt: admin.firestore.Timestamp.now(),
-      type: 'research'
-    });
-
-    return {
-      success: true,
-      insights
-    };
-  } catch (error) {
-    console.error('Research error:', error);
-    throw new functions.https.HttpsError('internal', error.message);
-  }
+  return { success: true };
 });
 
 /**
- * Generate signed URL for R2 uploads
+ * generateUploadUrl
+ * Returns Cloudinary upload config — no outbound HTTP, just env vars.
+ * Safe on Spark plan.
  */
 exports.generateUploadUrl = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -276,103 +207,31 @@ exports.generateUploadUrl = functions.https.onCall(async (data, context) => {
   }
 
   const userId = context.auth.uid;
-  const { fileName, fileType } = data;
 
   try {
-    // Validate file
-    const subscription = await getUserSubscription(userId);
-    const tier = TIERS[subscription.tier];
-    
-    // For Cloudinary, we use unsigned uploads with preset
-    // No need for signed URL - client uploads directly to Cloudinary
-    
+    // Validates the user exists and has an active subscription
+    await getUserSubscription(userId);
+
     return {
-      success: true,
+      success:            true,
       cloudinaryCloudName: process.env.VITE_CLOUDINARY_CLOUD_NAME,
-      uploadPreset: process.env.VITE_CLOUDINARY_UPLOAD_PRESET,
+      uploadPreset:        process.env.VITE_CLOUDINARY_UPLOAD_PRESET,
       uploadConfig: {
         folder: `marketmind/users/${userId}/content`,
-        tags: [`user:${userId}`, 'marketplace'],
-        eager: 'w_400,h_300,c_pad|w_800,h_600,c_pad' // Create thumbnails
-      }
+        tags:   [`user:${userId}`, 'marketplace'],
+        eager:  'w_400,h_300,c_pad|w_800,h_600,c_pad',
+      },
     };
   } catch (error) {
     throw new functions.https.HttpsError('internal', error.message);
   }
 });
 
-/**
- * Exchange Facebook OAuth code for access token (SECURE - backend only)
- */
-exports.exchangeFacebookToken = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
-  }
-
-  const { code, redirectUri } = data;
-
-  try {
-    // Secret key only on backend - NEVER in frontend
-    const response = await axios.post(
-      `https://graph.facebook.com/v18.0/oauth/access_token`,
-      {
-        client_id: process.env.FACEBOOK_APP_ID,
-        redirect_uri: redirectUri,
-        client_secret: process.env.FACEBOOK_APP_SECRET,
-        code
-      }
-    );
-
-    const { access_token } = response.data;
-    if (!access_token) throw new Error('No access token received');
-
-    // Get user's pages
-    const pagesResponse = await axios.get(
-      `https://graph.facebook.com/v18.0/me/accounts?access_token=${access_token}`
-    );
-
-    return {
-      success: true,
-      pages: pagesResponse.data.data
-    };
-  } catch (error) {
-    console.error('Token exchange error:', error);
-    throw new functions.https.HttpsError('internal', error.message);
-  }
-});
-
-/**
- * Post to Facebook (SECURE - backend only)
- */
-exports.postToFacebook = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Must be logged in');
-  }
-
-  const { pageId, accessToken, content, imageUrl } = data;
-
-  try {
-    const body = {
-      message: content,
-      access_token: accessToken
-    };
-
-    if (imageUrl) {
-      body.link = imageUrl;
-    }
-
-    const response = await axios.post(
-      `https://graph.facebook.com/v18.0/${pageId}/feed`,
-      body
-    );
-
-    return {
-      success: !response.data.error,
-      postId: response.data.id,
-      error: response.data.error?.message || null
-    };
-  } catch (error) {
-    console.error('Post error:', error);
-    throw new functions.https.HttpsError('internal', error.message);
-  }
-});
+// ==================== REMOVED FUNCTIONS ======================================
+// The following functions have been removed because they make outbound HTTP
+// requests which are blocked on the Firebase Spark (free) plan:
+//
+//   exchangeFacebookToken  →  replaced by netlify/functions/oauth-exchange.js
+//   postToFacebook         →  replaced by netlify/functions/post-to-facebook.js
+//   generateContent        →  replaced by netlify/functions/generate-content.js
+//   conductResearch        →  replaced by netlify/functions/conduct-research.js
