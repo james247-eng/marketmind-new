@@ -11,7 +11,7 @@
 // Firebase is used ONLY for Firestore reads/writes.
 
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from './firebase.js';
+import { db } from './firebase';
 
 const REDIRECT_URI = window.location.origin + '/accounts';
 
@@ -78,9 +78,18 @@ export const connectFacebook = () => {
 
 export const handleFacebookCallback = async (code, userId) => {
   try {
-    const tokenData = await exchangeViaNetlify('facebook', code, userId);
-    await saveAccountToFirestore(userId, 'facebook', tokenData);
-    return { success: true };
+    const data = await exchangeViaNetlify('facebook', code, userId);
+
+    if (data.multiple && Array.isArray(data.accounts)) {
+      // Save each Facebook Page as a separate account so user can choose which to post to
+      for (const page of data.accounts) {
+        await saveAccountToFirestore(userId, 'facebook', page);
+      }
+      return { success: true, pageCount: data.accounts.length };
+    } else {
+      await saveAccountToFirestore(userId, 'facebook', data);
+      return { success: true };
+    }
   } catch (error) {
     console.error('Facebook auth error:', error);
     return { success: false, error: error.message };
@@ -112,9 +121,17 @@ export const connectInstagram = () => {
 
 export const handleInstagramCallback = async (code, userId) => {
   try {
-    const tokenData = await exchangeViaNetlify('instagram', code, userId);
-    await saveAccountToFirestore(userId, 'instagram', tokenData);
-    return { success: true };
+    const data = await exchangeViaNetlify('instagram', code, userId);
+
+    if (data.multiple && Array.isArray(data.accounts)) {
+      for (const page of data.accounts) {
+        await saveAccountToFirestore(userId, 'instagram', page);
+      }
+      return { success: true, pageCount: data.accounts.length };
+    } else {
+      await saveAccountToFirestore(userId, 'instagram', data);
+      return { success: true };
+    }
   } catch (error) {
     console.error('Instagram auth error:', error);
     return { success: false, error: error.message };
