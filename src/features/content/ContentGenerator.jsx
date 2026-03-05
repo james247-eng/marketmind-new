@@ -1,7 +1,7 @@
 // ContentGenerator.jsx
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase.js';
+import { db } from '../../services/firebase.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { generateContent, conductResearch } from '../services/aiService.js';
 import { uploadFile, validateFile } from '../services/storageService.js';
