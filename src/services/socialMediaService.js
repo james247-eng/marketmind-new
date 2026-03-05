@@ -69,7 +69,7 @@ export const connectFacebook = () => {
     `?client_id=${clientId}` +
     `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
     `&scope=${scope}` +
-    `&response_type=code`;
+    `&response_type=code`
         `&state=facebook`;   // ✅ add this
 
 
