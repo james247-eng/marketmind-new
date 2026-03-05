@@ -425,13 +425,13 @@ export default PostScheduler;
 
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { useAuth } from '../context/AuthContext';
-import { getConnectedAccounts } from '../services/socialMediaService';
-import { getContentHistory } from '../services/contentService';
-import { schedulePost, getScheduledPosts, cancelScheduledPost } from '../services/schedulingService';
-import Sidebar from '../components/Sidebar';
-import Header from '../components/Header';
+import { db } from '../../services/firebase.js';
+import { useAuth } from '../../context/AuthContext';
+import { getConnectedAccounts } from '../../services/socialMediaService.js';
+import { getContentHistory } from '../../services/contentService.js';
+import { schedulePost, getScheduledPosts, cancelScheduledPost } from '../../services/schedulingService.js';
+import Sidebar from '../../components/Sidebar';
+import Header from '../../components/Header';
 import { Calendar, Clock, Send, X, AlertCircle, CheckCircle } from 'lucide-react';
 import './PostScheduler.css';
 
