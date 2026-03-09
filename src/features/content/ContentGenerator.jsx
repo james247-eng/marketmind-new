@@ -25,19 +25,82 @@ const PLATFORMS = [
 // Robust JSON parser — handles Groq preamble text and markdown fences
 const parseGeneratedContent = (raw) => {
   if (!raw) return null;
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  
+  // More aggressive cleaning attempts
   const attempts = [
-    () => raw.trim(),
-    () => raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim(),
-    () => { const m = raw.match(/\{[\s\S]*\}/); return m ? m[0] : null; },
+    // Try direct parse first
+    () => JSON.parse(raw.trim()),
+    // Remove markdown fences
+    () => JSON.parse(raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()),
+    // Extract JSON object from text
+    () => {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) return JSON.parse(match[0]);
+      throw new Error('No JSON object found');
+    },
+    // Try to find and parse any valid JSON substring
+    () => {
+      // Look for platform keys to identify valid content
+      const platforms = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
+      for (const platform of platforms) {
+        const regex = new RegExp(`"${platform}"\\s*:\\s*"([^"]*(?:\\\\.[^"]*)*)"`, 'i');
+        const match = raw.match(regex);
+        if (match) {
+          // Found at least one platform, try to extract the whole JSON
+          const start = raw.indexOf('{');
+          const end = raw.lastIndexOf('}') + 1;
+          if (start !== -1 && end > start) {
+            const jsonStr = raw.substring(start, end);
+            return JSON.parse(jsonStr);
+          }
+        }
+      }
+      throw new Error('No platform content found');
+    },
+    // Last resort: try to construct from raw text if it contains platform mentions
+    () => {
+      const platforms = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
+      const result = {};
+      let foundAny = false;
+      
+      for (const platform of platforms) {
+        const regex = new RegExp(`${platform}[^}]*?([^{}]*?)(?=${platforms.join('|')}|$)`, 'gi');
+        const match = raw.match(regex);
+        if (match && match[0]) {
+          // Extract content after platform name
+          const content = match[0].replace(new RegExp(`${platform}\\s*:\\s*`, 'i'), '').trim();
+          if (content) {
+            result[platform] = content.replace(/^["']|["']$/g, ''); // Remove quotes
+            foundAny = true;
+          }
+        }
+      }
+      
+      if (foundAny && Object.keys(result).length > 0) {
+        return result;
+      }
+      throw new Error('Could not extract platform content');
+    }
   ];
+  
   for (const attempt of attempts) {
     try {
-      const cleaned = attempt();
-      if (!cleaned) continue;
-      const parsed = JSON.parse(cleaned);
-      if (PLATFORMS.some(p => parsed[p.key])) return parsed;
-    } catch { continue; }
+      const parsed = attempt();
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        // Validate that we have at least some platform content
+        const platforms = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
+        const hasPlatformContent = platforms.some(p => parsed[p] && typeof parsed[p] === 'string' && parsed[p].trim().length > 0);
+        if (hasPlatformContent) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      // Continue to next attempt
+      continue;
+    }
   }
+  
   return null;
 };
 
@@ -240,7 +303,7 @@ function ContentGenerator() {
   // Upload image if present, then post to selected platforms
   const handlePostNow = async () => {
     if (selectedAccounts.length === 0) { setError('Select at least one platform to post to'); return; }
-    if (!parsedContent && !rawContent) { setError('No content to post'); return; }
+    if (!parsedContent) { setError('Content must be properly generated and parsed before posting. Please regenerate if you see raw JSON.'); return; }
 
     setPosting(true); setError(''); setPostResults([]);
 
@@ -256,8 +319,7 @@ function ContentGenerator() {
       }
 
       const accountsToPost = connectedAccounts.filter(a => selectedAccounts.includes(a.id));
-      const contentToPost  = parsedContent ? editedContent : rawContent;
-      const results        = await postToMultiplePlatforms(accountsToPost, contentToPost, imageUrl);
+      const results        = await postToMultiplePlatforms(accountsToPost, editedContent, imageUrl);
 
       setPostResults(results);
       const allOk = results.every(r => r.success);
@@ -455,7 +517,7 @@ function ContentGenerator() {
                         </label>
                       ))}
                     </div>
-                    <button className="btn-post-now" onClick={handlePostNow} disabled={posting || selectedAccounts.length === 0}>
+                    <button className="btn-post-now" onClick={handlePostNow} disabled={posting || selectedAccounts.length === 0 || !parsedContent}>
                       {posting ? <><Loader className="spinner" size={18} /> Posting...</> : <><Send size={18} /> Post Now</>}
                     </button>
                   </div>

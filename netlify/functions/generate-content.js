@@ -285,12 +285,26 @@ Return ONLY the JSON object with keys: twitter, linkedin, instagram, tiktok, you
 
       const rawContent = await callGroq(systemPrompt, userPrompt, 3000);
 
-      // Strip markdown fences at the source — belt AND braces
-      // Even though the prompt says "no backticks", LLMs sometimes ignore it
-      const content = rawContent
+      // Strip markdown fences and any extra text — belt AND braces
+      let content = rawContent
         .replace(/```json\s*/gi, '')
         .replace(/```\s*/g, '')
+        .replace(/^[^{]*/, '') // Remove any text before the first {
+        .replace(/[^}]*$/, '') // Remove any text after the last }
         .trim();
+
+      // Validate that we have valid JSON
+      try {
+        const parsed = JSON.parse(content);
+        const requiredKeys = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
+        const hasAllKeys = requiredKeys.every(key => key in parsed);
+        if (!hasAllKeys) {
+          throw new Error('Missing required platform keys');
+        }
+      } catch (e) {
+        console.error('Generated content is not valid JSON:', content.substring(0, 200));
+        throw new Error('AI generated invalid JSON. Please try again.');
+      }
 
       return {
         statusCode: 200,
