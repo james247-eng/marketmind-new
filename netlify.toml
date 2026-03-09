@@ -1,5 +1,3 @@
-
-
 [build]
   command = "npm run build"
   publish = "dist"
@@ -8,29 +6,32 @@
 # =====================================================
 # NETLIFY FUNCTIONS PLUGIN
 # =====================================================
-# Automatically installs dependencies for Netlify Functions
-# =====================================================
-
 [[plugins]]
   package = "@netlify/plugin-functions-install-core"
 
 # =====================================================
+# FUNCTIONS CONFIG
+# =====================================================
+# esbuild bundler lets Netlify resolve firebase-admin
+# and other CommonJS deps inside Netlify Functions
+
+[functions]
+  node_bundler = "esbuild"
+
+# =====================================================
+# SCHEDULED FUNCTION — fires every 5 minutes
+# Reads due scheduled posts from Firestore and posts them
+# =====================================================
+[[scheduled-functions]]
+  name     = "execute-scheduled-posts"
+  schedule = "*/5 * * * *"
+
+# =====================================================
 # SECRETS SCANNING CONFIGURATION
 # =====================================================
-# Netlify's secrets scanner blocks deploys if it detects
-# secret patterns in build output. Use this config to
-# whitelist keys that are INTENTIONALLY public-facing.
-# =====================================================
-
 [build.environment]
-  # Firebase config is intentionally client-side
-  # (no sensitive data in Firebase keys for public web apps)
   SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY,VITE_FIREBASE_APP_ID,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_MEASUREMENT_ID,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_PROJECT_ID,VITE_FIREBASE_STORAGE_BUCKET,VITE_PAYSTACK_PUBLIC_KEY,VITE_YOUTUBE_CLIENT_ID,VITE_FACEBOOK_APP_ID,VITE_INSTAGRAM_APP_ID,VITE_TWITTER_API_KEY,VITE_TIKTOK_CLIENT_KEY"
-
-  # Node environment
   NODE_ENV = "production"
-
-  # Ensure devDependencies are installed (includes Vite)
   NPM_CONFIG_PRODUCTION = "false"
 
 # =====================================================
@@ -43,7 +44,7 @@
 #
 # Keys that should NEVER use VITE_ prefix:
 # - PAYSTACK_SECRET_KEY (backend only)
-# - CLAUDE_API_KEY (backend only)  
+# - CLAUDE_API_KEY (backend only)
 # - PERPLEXITY_API_KEY (backend only)
 # - VITE_R2_SECRET_ACCESS_KEY (remove VITE_, backend only)
 # - VITE_TWITTER_API_SECRET (remove VITE_, backend only)
@@ -56,14 +57,11 @@
 # =====================================================
 
 [context.production]
-  # Production build settings
   environment = { NODE_ENV = "production" }
 
 # =====================================================
 # TIKTOK VERIFICATION FILE HEADERS
 # =====================================================
-# Ensures the verification file is served with correct MIME type
-
 [[headers]]
   for = "/tiktok-developers-site-verification.txt"
   [headers.values]

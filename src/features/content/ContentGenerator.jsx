@@ -1,4 +1,6 @@
 // ContentGenerator.jsx
+
+
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
@@ -11,7 +13,6 @@ import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { Sparkles, Upload, X, Loader, Copy, CheckCircle, Send } from 'lucide-react';
 import './ContentGenerator.css';
-
 const PLATFORMS = [
   { key: 'twitter',   label: 'Twitter/X',  icon: '🐦', charLimit: 280  },
   { key: 'linkedin',  label: 'LinkedIn',   icon: '💼', charLimit: 3000 },
@@ -114,6 +115,53 @@ function ContentGenerator() {
     if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0]);
   };
 
+  // Fetch recent posts from connected accounts to use as style examples
+  const fetchRecentPosts = async () => {
+    const examples = [];
+    for (const account of connectedAccounts.slice(0, 3)) {
+      try {
+        if (account.platform === 'facebook') {
+          const res = await fetch(
+            `https://graph.facebook.com/v18.0/${account.accountId}/posts?fields=message&limit=5&access_token=${account.accessToken}`
+          );
+          const data = await res.json();
+          if (data.data?.length) {
+            examples.push({
+              platform: 'facebook',
+              posts: data.data.map(p => p.message).filter(Boolean).slice(0, 3),
+            });
+          }
+        } else if (account.platform === 'instagram') {
+          const res = await fetch(
+            `https://graph.facebook.com/v18.0/${account.accountId}/media?fields=caption&limit=5&access_token=${account.accessToken}`
+          );
+          const data = await res.json();
+          if (data.data?.length) {
+            examples.push({
+              platform: 'instagram',
+              posts: data.data.map(p => p.caption).filter(Boolean).slice(0, 3),
+            });
+          }
+        } else if (account.platform === 'twitter') {
+          const res = await fetch(
+            `https://api.twitter.com/2/users/${account.accountId}/tweets?max_results=5`,
+            { headers: { Authorization: `Bearer ${account.accessToken}` } }
+          );
+          const data = await res.json();
+          if (data.data?.length) {
+            examples.push({
+              platform: 'twitter',
+              posts: data.data.map(t => t.text).slice(0, 3),
+            });
+          }
+        }
+      } catch (err) {
+        console.warn(`Could not fetch ${account.platform} posts:`, err.message);
+      }
+    }
+    return examples;
+  };
+
   const handleGenerate = async () => {
     if (!formData.businessId) { setError('Please select a business'); return; }
     if (!formData.prompt.trim()) { setError('Please enter what you want to create'); return; }
@@ -123,14 +171,32 @@ function ContentGenerator() {
 
     try {
       const biz = businesses.find(b => b.id === formData.businessId);
-      const businessContext = `Business: ${biz.name}, Industry: ${biz.niche}, Target: ${biz.targetAudience || 'general audience'}`;
+
+      // Build rich business context using ALL saved fields
+      const businessContext = [
+        `Business Name: ${biz.name}`,
+        `Industry/Niche: ${biz.niche}`,
+        `Business Description: ${biz.description || 'Not provided'}`,
+        `Target Audience: ${biz.targetAudience || 'General audience'}`,
+        `Brand Voice: ${biz.brandVoice || 'professional'}`,
+        `Country/Market: ${biz.country || 'Not specified'}`,
+        `Business Presence: ${biz.presenceType || 'online'}`,
+      ].join(' | ');
+
+      // Fetch recent posts from connected accounts as style examples
+      const recentPostExamples = await fetchRecentPosts();
 
       if (formData.includeResearch) {
         const research = await conductResearch(formData.prompt, biz.niche);
         if (research.success) setResearchInsights(research.insights);
       }
 
-      const result = await generateContent(formData.prompt, formData.tone, businessContext);
+      const result = await generateContent(
+        formData.prompt,
+        formData.tone,
+        businessContext,
+        recentPostExamples
+      );
 
       if (result.success) {
         setRawContent(result.content);

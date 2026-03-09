@@ -1,9 +1,9 @@
 // aiService.js
-// All AI calls go to Netlify Functions, NOT Firebase.
-// Firebase Spark plan blocks outbound HTTP to Gemini API.
-// The GEMINI_API_KEY is stored securely in Netlify environment variables.
+// AI calls go to Netlify Functions (Groq API — outbound HTTP blocked on Firebase Spark).
+// After a successful generation, Firebase is called ONLY to record usage in Firestore
+// (pure read/write, no outbound HTTP — safe on Spark plan).
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
+// ─── Netlify helper ───────────────────────────────────────────────────────────
 
 const callNetlify = async (payload) => {
   const response = await fetch('/.netlify/functions/generate-content', {
@@ -15,20 +15,44 @@ const callNetlify = async (payload) => {
   const data = await response.json();
 
   if (!response.ok || !data.success) {
-    throw new Error(data.error || 'Request to generate-content function failed');
+    throw new Error(data.error || 'generate-content function failed');
   }
 
   return data;
 };
 
-// ─── Generate social media content ───────────────────────────────────────────
+// ─── Firebase usage recorder ──────────────────────────────────────────────────
+// Calls recordContentGeneration / recordResearch in functions/index.js.
+// These only write to Firestore — no outbound HTTP — so they're safe on Spark.
+// Failures are non-fatal: we log but don't surface them to the user.
+
+const recordGeneration = async (prompt, tone, businessContext, content) => {
+  try {
+    const record = httpsCallable(functions, 'recordContentGeneration');
+    await record({ prompt, tone, businessContext, content });
+  } catch (err) {
+    // Don't block the UI if recording fails
+    console.warn('Usage tracking failed (non-fatal):', err.message);
+  }
+};
+
+const recordResearchUsage = async (topic, businessNiche, insights) => {
+  try {
+    const record = httpsCallable(functions, 'recordResearch');
+    await record({ topic, businessNiche, insights });
+  } catch (err) {
+    console.warn('Research tracking failed (non-fatal):', err.message);
+  }
+};
+
+// ─── generateContent ─────────────────────────────────────────────────────────
 // Called by ContentGenerator.jsx
-// Returns { success, content } where content is a JSON string with keys:
+// Returns { success, content } — content is a JSON string with keys:
 // twitter, linkedin, instagram, tiktok, youtube
 
-export const generateContent = async (prompt, tone, businessContext) => {
+export const generateContent = async (prompt, tone, businessContext, recentPostExamples = []) => {
   try {
-    const data = await callNetlify({ type: 'generate', prompt, tone, businessContext });
+    const data = await callNetlify({ type: 'generate', prompt, tone, businessContext, recentPostExamples });
 
     return {
       success: true,
@@ -44,9 +68,9 @@ export const generateContent = async (prompt, tone, businessContext) => {
   }
 };
 
-// ─── Conduct market research ──────────────────────────────────────────────────
+// ─── conductResearch ─────────────────────────────────────────────────────────
 // Called by ContentGenerator.jsx when "Include market research" is checked.
-// Returns { success, insights } where insights is a JSON string.
+// Returns { success, insights } — insights is a JSON string.
 
 export const conductResearch = async (topic, businessNiche) => {
   try {
