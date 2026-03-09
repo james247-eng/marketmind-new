@@ -98,7 +98,12 @@ function BusinessList() {
                   </div>
                   <div className="business-footer">
                     <span className="presence-badge">{business.presenceType}</span>
-                    <button className="btn-view">View Details</button>
+                    <button 
+                      className="btn-view"
+                      onClick={() => navigate(`/businesses/${business.id}/edit`)}
+                    >
+                      Edit
+                    </button>
                   </div>
                 </div>
               ))}

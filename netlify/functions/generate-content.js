@@ -283,7 +283,14 @@ Remember: You are writing for a real business that needs content that actually w
 
 Return ONLY the JSON object with keys: twitter, linkedin, instagram, tiktok, youtube, facebook`;
 
-      const content = await callGroq(systemPrompt, userPrompt, 3000);
+      const rawContent = await callGroq(systemPrompt, userPrompt, 3000);
+
+      // Strip markdown fences at the source — belt AND braces
+      // Even though the prompt says "no backticks", LLMs sometimes ignore it
+      const content = rawContent
+        .replace(/```json\s*/gi, '')
+        .replace(/```\s*/g, '')
+        .trim();
 
       return {
         statusCode: 200,

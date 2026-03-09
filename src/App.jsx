@@ -13,6 +13,7 @@ import OAuthCallback from './components/OAuthCallback';
 import Dashboard from './features/dashboard/Dashboard';
 import BusinessList from './features/business/BusinessList';
 import CreateBusiness from './features/business/CreateBusiness';
+import EditBusiness from './features/business/EditBusiness';
 import ContentGenerator from './features/content/ContentGenerator';
 import ContentHistory from './features/content/ContentHistory';
 import PostScheduler from './features/scheduling/PostScheduler';
@@ -74,6 +75,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <CreateBusiness />
+              </ProtectedRoute>
+            } 
+          />
+          
+          <Route 
+            path="/businesses/:id/edit" 
+            element={
+              <ProtectedRoute>
+                <EditBusiness />
               </ProtectedRoute>
             } 
           />
