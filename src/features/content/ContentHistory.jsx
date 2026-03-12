@@ -1,11 +1,11 @@
 // ContentHistory.jsx
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { getConnectedAccounts, postToMultiplePlatforms } from '../services/socialMediaService';
-import Sidebar from '../components/Sidebar';
-import Header from '../components/Header';
+import { db } from '../../services/firebase';
+import { getConnectedAccounts, postToMultiplePlatforms } from '../../services/socialMediaService';
+import Sidebar from '../../components/Sidebar';
+import Header from '../../components/Header';
 import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, Send, RefreshCw } from 'lucide-react';
 import './ContentHistory.css';
 

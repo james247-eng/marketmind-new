@@ -323,8 +323,36 @@ Return ONLY the JSON object with keys: twitter, linkedin, instagram, tiktok, you
         parsed = JSON.parse(content);
       } catch (parseErr) {
         console.error('JSON parse failed after cleaning:', parseErr.message);
-        console.error('Content attempted:', content.substring(0, 400));
-        throw new Error('AI returned malformed JSON: ' + parseErr.message);
+        console.error('Retrying with strict prompt...');
+
+        // ── Fallback: retry Groq with a stricter, simpler prompt ─────────────
+        // If the AI still returns malformed JSON, ask it to fix its own output
+        const retryPrompt = `The following JSON is malformed because it contains unescaped control characters. 
+Return ONLY the corrected, valid JSON. Fix all unescaped newlines (replace literal newlines inside string values with \\n).
+Do not change any content — only fix the JSON syntax.
+Malformed JSON:
+${rawContent.substring(0, 2000)}`;
+
+        try {
+          const retryRaw = await callGroq(
+            'You are a JSON repair tool. Return ONLY valid JSON, nothing else.',
+            retryPrompt,
+            3000
+          );
+          const retryClean = retryRaw
+            .replace(/\`\`\`json\s*/gi, '')
+            .replace(/\`\`\`\s*/g, '')
+            .trim();
+          const retryStart = retryClean.indexOf('{');
+          const retryEnd   = retryClean.lastIndexOf('}');
+          const retryJson  = retryClean.substring(retryStart, retryEnd + 1);
+          parsed = JSON.parse(retryJson);
+          content = retryJson;
+          console.log('Retry succeeded');
+        } catch (retryErr) {
+          console.error('Retry also failed:', retryErr.message);
+          throw new Error('AI returned malformed JSON after retry: ' + parseErr.message);
+        }
       }
 
       const requiredKeys = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
