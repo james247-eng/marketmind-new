@@ -262,10 +262,17 @@ ${PSYCHOLOGY_RULES}
 
 ${PLATFORM_SPECS}
 
-CRITICAL OUTPUT RULE:
-Respond with ONLY a valid JSON object. No markdown fences, no backticks, no preamble, no explanation.
-The JSON must have exactly these keys: twitter, linkedin, instagram, tiktok, youtube, facebook
-Each value must be a complete, ready-to-post string for that platform.`;
+RESPOND WITH ONLY VALID JSON - NO EXPLANATIONS:
+You must respond with ONLY a valid JSON object, nothing else. 
+The response must:
+- Start with { and end with }
+- Contain exactly these keys: "twitter", "linkedin", "instagram", "tiktok", "youtube", "facebook"
+- Each value must be a complete, ready-to-post string for that platform
+- Use escapes for quotes inside strings (backslash-quote)
+- Include NO markdown fences, NO backticks, NO preamble, NO explanation text before or after the JSON
+
+Example format:
+{"twitter": "text here", "linkedin": "text here", "instagram": "text here", "tiktok": "text here", "youtube": "text here", "facebook": "text here"}`;
 
       // User prompt — the actual task
       const userPrompt = `BUSINESS PROFILE:
@@ -281,29 +288,58 @@ Now generate platform-optimised content for this business. Use everything you kn
 
 Remember: You are writing for a real business that needs content that actually works. Not generic filler. Not AI-sounding fluff. Real, human, scroll-stopping content that serves their specific business goals.
 
-Return ONLY the JSON object with keys: twitter, linkedin, instagram, tiktok, youtube, facebook`;
+FINAL INSTRUCTION: Respond with ONLY the JSON object. No other text, no explanation, no markdown. Start with { and end with }.`;
 
       const rawContent = await callGroq(systemPrompt, userPrompt, 3000);
 
-      // Strip markdown fences and any extra text — belt AND braces
-      let content = rawContent
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*/g, '')
-        .replace(/^[^{]*/, '') // Remove any text before the first {
-        .replace(/[^}]*$/, '') // Remove any text after the last }
-        .trim();
+      // Clean the response carefully
+      let content = rawContent;
+      
+      // Remove markdown fences if present
+      content = content.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+      content = content.trim();
 
-      // Validate that we have valid JSON
+      // Find first { and last }
+      const startIdx = content.indexOf('{');
+      const endIdx = content.lastIndexOf('}');
+
+      if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) {
+        console.error('Invalid response: No JSON object found');
+        console.error('Raw response:', content.substring(0, 500));
+        throw new Error('AI response does not contain valid JSON object');
+      }
+
+      // Extract just the JSON part
+      content = content.substring(startIdx, endIdx + 1);
+
+      // Parse and validate
+      let parsed;
       try {
-        const parsed = JSON.parse(content);
-        const requiredKeys = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
-        const hasAllKeys = requiredKeys.every(key => key in parsed);
-        if (!hasAllKeys) {
-          throw new Error('Missing required platform keys');
-        }
-      } catch (e) {
-        console.error('Generated content is not valid JSON:', content.substring(0, 200));
-        throw new Error('AI generated invalid JSON. Please try again.');
+        parsed = JSON.parse(content);
+      } catch (parseErr) {
+        console.error('JSON parsing failed:', parseErr.message);
+        console.error('Attempted to parse:', content.substring(0, 300));
+        throw new Error(`Invalid JSON from AI: ${parseErr.message}`);
+      }
+
+      // Verify all required keys exist and have content
+      const requiredKeys = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
+      const missingKeys = requiredKeys.filter(key => !(key in parsed));
+      
+      if (missingKeys.length > 0) {
+        console.error('Missing required platform keys:', missingKeys);
+        console.error('Available keys:', Object.keys(parsed));
+        throw new Error(`AI response missing platforms: ${missingKeys.join(', ')}`);
+      }
+
+      // Check that values are non-empty strings
+      const emptyKeys = requiredKeys.filter(
+        key => typeof parsed[key] !== 'string' || parsed[key].trim().length === 0
+      );
+      
+      if (emptyKeys.length > 0) {
+        console.error('Empty content for platforms:', emptyKeys);
+        throw new Error(`AI generated empty content for: ${emptyKeys.join(', ')}`);
       }
 
       return {
