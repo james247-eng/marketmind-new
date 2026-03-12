@@ -3,12 +3,23 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
+import { getConnectedAccounts, postToMultiplePlatforms } from '../services/socialMediaService';
 import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
-import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, RefreshCw } from 'lucide-react';
+import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, Send, RefreshCw } from 'lucide-react';
 import './ContentHistory.css';
 
-
+/* ContentHistory.jsx
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { getConnectedAccounts, postToMultiplePlatforms } from '../services/socialMediaService';
+import Sidebar from '../components/Sidebar';
+import Header from '../components/Header';
+import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, Send, RefreshCw } from 'lucide-react';
+import './ContentHistory.css';
+*/
 const PLATFORMS = [
   { key: 'twitter',   label: 'Twitter/X', icon: '🐦', color: '#1DA1F2' },
   { key: 'linkedin',  label: 'LinkedIn',  icon: '💼', color: '#0077B5' },

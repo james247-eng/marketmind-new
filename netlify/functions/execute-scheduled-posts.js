@@ -91,7 +91,21 @@ const parseContent = (raw) => {
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
-exports.handler = async () => {
+exports.handler = async (event) => {
+  // Allow Netlify scheduled invocations (no httpMethod) OR
+  // external POST requests with the correct secret token
+  if (event.httpMethod === 'GET' || event.httpMethod === 'HEAD') {
+    return { statusCode: 405, body: 'Method not allowed' };
+  }
+
+  if (event.httpMethod === 'POST') {
+    const secret = process.env.CRON_SECRET;
+    const authHeader = event.headers?.authorization || '';
+    if (secret && authHeader !== `Bearer ${secret}`) {
+      return { statusCode: 401, body: 'Unauthorized' };
+    }
+  }
+
   console.log('[execute-scheduled-posts] Starting run at', new Date().toISOString());
 
   try {
