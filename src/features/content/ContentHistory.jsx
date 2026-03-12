@@ -1,16 +1,5 @@
 // ContentHistory.jsx
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../../context/AuthContext.jsx';
-import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../../services/firebase.js';
-import { getConnectedAccounts, postToMultiplePlatforms } from '../services/socialMediaService';
-import Sidebar from '../../components/Sidebar.jsx';
-import Header from '../../components/Header.jsx';
-import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, Send, RefreshCw } from 'lucide-react';
-import './ContentHistory.css';
-
-/* ContentHistory.jsx
-import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -19,7 +8,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, Send, RefreshCw } from 'lucide-react';
 import './ContentHistory.css';
-*/
+
 const PLATFORMS = [
   { key: 'twitter',   label: 'Twitter/X', icon: '🐦', color: '#1DA1F2' },
   { key: 'linkedin',  label: 'LinkedIn',  icon: '💼', color: '#0077B5' },
@@ -110,8 +99,9 @@ function ContentHistory() {
     const opening = !repostOpen[id];
     setRepostOpen(prev => ({ ...prev, [id]: opening }));
     setRepostResults(prev => ({ ...prev, [id]: [] }));
+    // Do NOT pre-select all — user must deliberately choose which accounts to post to
     if (opening) {
-      setRepostSelected(prev => ({ ...prev, [id]: connectedAccounts.map(a => a.id) }));
+      setRepostSelected(prev => ({ ...prev, [id]: [] }));
     }
   };
 

@@ -306,7 +306,7 @@ Return ONLY the JSON object with keys: twitter, linkedin, instagram, tiktok, you
       // We fix them by replacing them with their escaped equivalents ONLY when
       // they appear inside a string value (between quotes).
       content = content.replace(
-        /"((?:[^"\\]|\\.)*)"/g,
+        /"((?:[^"\\]|\\.)*)"/gs,  // s flag: dot matches newlines inside JSON strings
         (match, inner) => {
           const fixed = inner
             .replace(/\r\n/g, '\\n')   // Windows line endings
