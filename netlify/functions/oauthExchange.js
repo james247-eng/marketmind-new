@@ -1,7 +1,15 @@
 // netlify/functions/oauthExchange.js
 // Handles OAuth authorization code exchange for all social platforms.
+// Keeps client-facing authentication modular and clear.
 
 const axios = require('axios');
+
+const CORS = {
+  'Access-Control-Allow-Origin':  process.env.ALLOWED_ORIGIN || 'https://marketmind-02.netlify.app',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Content-Type':                 'application/json',
+};
 
 const PLATFORM_CONFIGS = {
   youtube:   { tokenEndpoint: 'https://oauth2.googleapis.com/token' },
@@ -18,7 +26,7 @@ const getClientSecret = (platform) => {
   const key    = platform === 'instagram' ? 'facebook' : platform;
   const envVar = `${key.toUpperCase()}_CLIENT_SECRET`;
   const value  = process.env[envVar];
-  if (!value) throw new Error(`Missing environment variable: ${envVar}`);
+  if (!value) throw new Error(`Missing environment variable configuration for secret: ${envVar}`);
   return value;
 };
 
@@ -26,316 +34,212 @@ const getClientId = (platform) => {
   const key    = platform === 'instagram' ? 'facebook' : platform;
   const envVar = `${key.toUpperCase()}_CLIENT_ID`;
   const value  = process.env[envVar];
-  if (!value) throw new Error(`Missing environment variable: ${envVar}`);
+  if (!value) throw new Error(`Missing environment variable configuration for ID: ${envVar}`);
   return value;
 };
 
-exports.handler = async (event) => {
-  const headers = {
-    'Access-Control-Allow-Origin':  process.env.ALLOWED_ORIGIN || 'https://marketmind-02.netlify.app',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Content-Type':                 'application/json',
-  };
+// ─── Platform Exchange Adapters ──────────────────────────────────────────────
 
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' };
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
-  }
-
-  try {
-    const { platform, code, redirectUri, userId } = JSON.parse(event.body);
-
-    if (!platform || !code || !redirectUri || !userId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'Missing required fields: platform, code, redirectUri, userId' }),
-      };
-    }
-
-    if (!PLATFORM_CONFIGS[platform]) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: `Unsupported platform: ${platform}` }),
-      };
-    }
-
-    const result = await exchangeCodeForToken(platform, code, redirectUri);
-
-    // Facebook returns MULTIPLE accounts (one per Page)
-    // All other platforms return a single account
-    if (platform === 'facebook' || platform === 'instagram') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success:  true,
-          platform,
-          multiple: true,       // tells socialMediaService to save each separately
-          accounts: result,     // array of { accountId, accountName, accessToken, ... }
-        }),
-      };
-    }
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success:      true,
-        platform,
-        multiple:     false,
-        accountId:    result.accountId,
-        accountName:  result.accountName,
-        email:        result.email        || '',
-        accessToken:  result.accessToken,
-        refreshToken: result.refreshToken || null,
-        expiresIn:    result.expiresIn,
-        scope:        result.scope        || '',
-      }),
-    };
-
-  } catch (error) {
-    console.error('OAuth exchange error:', error.response?.data || error.message);
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: error.message || 'Failed to exchange authorization code' }),
-    };
-  }
-};
-
-async function exchangeCodeForToken(platform, code, redirectUri) {
-  const clientId     = getClientId(platform);
-  const clientSecret = getClientSecret(platform);
-  const config       = PLATFORM_CONFIGS[platform];
-
-  switch (platform) {
-    case 'youtube':   return exchangeYouTubeToken(clientId, clientSecret, code, redirectUri, config);
-    case 'facebook':
-    case 'instagram': return exchangeFacebookToken(clientId, clientSecret, code, redirectUri, config);
-    case 'tiktok':    return exchangeTikTokToken(clientId, clientSecret, code, redirectUri, config);
-    case 'twitter':   return exchangeTwitterToken(clientId, clientSecret, code, redirectUri, config);
-    case 'linkedin':  return exchangeLinkedInToken(clientId, clientSecret, code, redirectUri, config);
-    case 'pinterest': return exchangePinterestToken(clientId, clientSecret, code, redirectUri, config);
-    case 'snapchat':  return exchangeSnapchatToken(clientId, clientSecret, code, redirectUri, config);
-    default: throw new Error(`Unsupported platform: ${platform}`);
-  }
-}
-
-// ─── YouTube ──────────────────────────────────────────────────────────────────
-
-async function exchangeYouTubeToken(clientId, clientSecret, code, redirectUri, config) {
-  const tokenRes = await axios.post(config.tokenEndpoint, {
-    code, client_id: clientId, client_secret: clientSecret,
-    redirect_uri: redirectUri, grant_type: 'authorization_code',
+async function exchangeFacebookToken(clientId, clientSecret, code, redirectUri) {
+  // 1. Exchange temporary authorization code for user short-lived access token
+  const tokenRes = await axios.get(PLATFORM_CONFIGS.facebook.tokenEndpoint, {
+    params: { client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code }
   });
-
-  const { access_token, refresh_token, expires_in, scope } = tokenRes.data;
-  let accountId = 'youtube-user', accountName = 'YouTube Account', email = '';
-
-  try {
-    const channelRes = await axios.get(
-      'https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',
-      { headers: { Authorization: `Bearer ${access_token}` } }
-    );
-    const channel = channelRes.data.items?.[0];
-    if (channel) { accountId = channel.id; accountName = channel.snippet.title; }
-    const userRes = await axios.get(
-      'https://www.googleapis.com/oauth2/v2/userinfo',
-      { headers: { Authorization: `Bearer ${access_token}` } }
-    );
-    email = userRes.data.email || '';
-  } catch (err) { console.warn('Could not fetch YouTube user info:', err.message); }
-
-  return { accountId, accountName, email, accessToken: access_token, refreshToken: refresh_token, expiresIn: expires_in, scope: scope || '' };
-}
-
-// ─── Facebook / Instagram ─────────────────────────────────────────────────────
-// Returns an ARRAY of Pages — each Page gets its own access token.
-// This is what allows the user to select which Page to post to.
-
-async function exchangeFacebookToken(clientId, clientSecret, code, redirectUri, config) {
-  // Step 1: Exchange code for short-lived user token
-  const tokenRes = await axios.get(config.tokenEndpoint, {
-    params: { client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code },
-  });
-
+  
   const userAccessToken = tokenRes.data.access_token;
 
-  // Step 2: Exchange for long-lived user token
-  let longLivedToken = userAccessToken;
-  try {
-    const llRes = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
-      params: {
-        grant_type:        'fb_exchange_token',
-        client_id:         clientId,
-        client_secret:     clientSecret,
-        fb_exchange_token: userAccessToken,
-      },
-    });
-    longLivedToken = llRes.data.access_token || userAccessToken;
-  } catch (err) {
-    console.warn('Could not exchange for long-lived token:', err.message);
-  }
+  // 2. Query all Facebook Pages managed by the authenticated user profile
+  const pagesRes = await axios.get(`https://graph.facebook.com/v18.0/me/accounts`, {
+    params: { access_token: userAccessToken }
+  });
 
-  // Step 3: Fetch all Pages this user manages — each has its own Page access token
-  // Page tokens are permanent (don't expire) when derived from a long-lived user token
-  const pages = [];
-  try {
-    const pagesRes = await axios.get('https://graph.facebook.com/v18.0/me/accounts', {
-      params: {
-        access_token: longLivedToken,
-        fields:       'id,name,access_token,category,picture',
-      },
+  const rawPages = pagesRes.data.data || [];
+  const processedAccounts = [];
+
+  // 3. For each page, structure details and attempt to check for an attached Instagram Business account
+  for (const page of rawPages) {
+    processedAccounts.push({
+      accountId: page.id,
+      accountName: page.name || 'Unnamed Facebook Page',
+      accessToken: page.access_token, // Page-scoped perpetual tokens
     });
 
-    for (const page of (pagesRes.data.data || [])) {
-      pages.push({
-        accountId:    page.id,
-        accountName:  page.name,
-        email:        '',
-        accessToken:  page.access_token,  // ← Page-specific token, not user token
-        refreshToken: null,
-        expiresIn:    null,               // Page tokens don't expire
-        scope:        'pages_manage_posts,pages_read_engagement',
-        pageCategory: page.category || '',
-      });
-    }
-  } catch (err) {
-    console.warn('Could not fetch Facebook Pages:', err.message);
-  }
-
-  // Fallback: if no Pages found, save the user profile so connection doesn't fail silently
-  if (pages.length === 0) {
     try {
-      const meRes = await axios.get('https://graph.facebook.com/v18.0/me', {
-        params: { fields: 'id,name,email', access_token: longLivedToken },
+      const igRes = await axios.get(`https://graph.facebook.com/v18.0/${page.id}`, {
+        params: { fields: 'instagram_business_account', access_token: page.access_token }
       });
-      pages.push({
-        accountId:    meRes.data.id   || 'fb-user',
-        accountName:  meRes.data.name || 'Facebook Account',
-        email:        meRes.data.email || '',
-        accessToken:  longLivedToken,
-        refreshToken: null,
-        expiresIn:    null,
-        scope:        'pages_manage_posts,pages_read_engagement',
-        pageCategory: 'Personal Profile',
-      });
-    } catch (err) {
-      console.warn('Could not fetch Facebook user info:', err.message);
+      
+      if (igRes.data?.instagram_business_account?.id) {
+        processedAccounts.push({
+          accountId: igRes.data.instagram_business_account.id,
+          accountName: `${page.name} (Linked Instagram Profile)`,
+          accessToken: page.access_token, // Instagram operations route through Page tokens
+        });
+      }
+    } catch (igErr) {
+      console.warn(`[oauthExchange] Skipping Instagram scan for Page ${page.id}:`, igErr.message);
     }
   }
 
-  return pages; // array
+  return {
+    multiple: true,
+    platform: 'facebook',
+    accounts: processedAccounts
+  };
 }
 
-// ─── TikTok ───────────────────────────────────────────────────────────────────
-
-async function exchangeTikTokToken(clientId, clientSecret, code, redirectUri, config) {
+async function exchangeTikTokToken(clientId, clientSecret, code, redirectUri) {
   const tokenRes = await axios.post(
-    config.tokenEndpoint,
-    new URLSearchParams({ client_key: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
+    PLATFORM_CONFIGS.tiktok.tokenEndpoint,
+    new URLSearchParams({
+      client_key: clientId,
+      client_secret: clientSecret,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+    }),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
 
-  const { access_token, refresh_token, expires_in, open_id, scope } = tokenRes.data;
-  let accountName = open_id;
+  const { open_id, access_token, refresh_token } = tokenRes.data;
+  let accountName = 'TikTok User';
 
   try {
-    const userRes = await axios.get(
-      'https://open.tiktokapis.com/v2/user/info/?fields=display_name,avatar_url',
-      { headers: { Authorization: `Bearer ${access_token}` } }
+    const userRes = await axios.post(
+      'https://open.tiktokapis.com/v2/user/info/',
+      {},
+      { headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' } }
     );
-    accountName = userRes.data.data?.user?.display_name || open_id;
-  } catch (err) { console.warn('Could not fetch TikTok user info:', err.message); }
+    accountName = userRes.data.data?.user?.display_name || accountName;
+  } catch (err) {
+    console.warn('[oauthExchange] Failed to query TikTok user context profiles info:', err.message);
+  }
 
-  return { accountId: open_id, accountName, email: '', accessToken: access_token, refreshToken: refresh_token, expiresIn: expires_in, scope: scope || '' };
+  return { accountId: open_id, accountName, accessToken: access_token, refreshToken: refresh_token };
 }
 
-// ─── Twitter ──────────────────────────────────────────────────────────────────
-
-async function exchangeTwitterToken(clientId, clientSecret, code, redirectUri, config) {
+async function exchangeTwitterToken(clientId, clientSecret, code, redirectUri) {
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const tokenRes = await axios.post(
-    config.tokenEndpoint,
-    new URLSearchParams({ code, grant_type: 'authorization_code', redirect_uri: redirectUri, code_verifier: 'challenge' }),
+    PLATFORM_CONFIGS.twitter.tokenEndpoint,
+    new URLSearchParams({
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: redirectUri,
+      code_verifier: 'challenge', // Fixed matching challenge token signature string
+    }),
     { headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
 
-  const { access_token, refresh_token, expires_in } = tokenRes.data;
-  let accountId = 'twitter-user', accountName = 'Twitter Account';
+  const { access_token, refresh_token } = tokenRes.data;
+  let accountId = 'twitter-user', accountName = 'Twitter/X Account';
 
   try {
     const userRes = await axios.get('https://api.twitter.com/2/users/me', {
-      headers: { Authorization: `Bearer ${access_token}` },
+      headers: { Authorization: `Bearer ${access_token}` }
     });
-    accountId   = userRes.data.data.id       || accountId;
-    accountName = userRes.data.data.username || userRes.data.data.name || accountName;
-  } catch (err) { console.warn('Could not fetch Twitter user info:', err.message); }
+    accountId = userRes.data.data?.id || accountId;
+    accountName = userRes.data.data?.name || accountName;
+  } catch (err) {
+    console.warn('[oauthExchange] Failed to fetch Twitter user profile metrics:', err.message);
+  }
 
-  return { accountId, accountName, email: '', accessToken: access_token, refreshToken: refresh_token, expiresIn: expires_in, scope: 'tweet.write tweet.read users.read' };
+  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token };
 }
 
-// ─── LinkedIn ─────────────────────────────────────────────────────────────────
-
-async function exchangeLinkedInToken(clientId, clientSecret, code, redirectUri, config) {
+async function exchangeYouTubeToken(clientId, clientSecret, code, redirectUri) {
   const tokenRes = await axios.post(
-    config.tokenEndpoint,
-    new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' }),
+    PLATFORM_CONFIGS.youtube.tokenEndpoint,
+    new URLSearchParams({
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    }),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
 
-  const { access_token, refresh_token, expires_in } = tokenRes.data;
-  let accountId = 'linkedin-user', accountName = 'LinkedIn Account';
+  const { access_token, refresh_token } = tokenRes.data;
+  let accountId = 'youtube-channel', accountName = 'YouTube Channel';
 
   try {
-    const userRes = await axios.get('https://api.linkedin.com/v2/me', {
-      headers: { Authorization: `Bearer ${access_token}` },
+    const channelRes = await axios.get('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', {
+      headers: { Authorization: `Bearer ${access_token}` }
     });
-    accountId   = userRes.data.id || accountId;
-    accountName = `${userRes.data.localizedFirstName} ${userRes.data.localizedLastName}`.trim() || accountName;
-  } catch (err) { console.warn('Could not fetch LinkedIn user info:', err.message); }
+    if (channelRes.data.items?.[0]) {
+      accountId = channelRes.data.items[0].id;
+      accountName = channelRes.data.items[0].snippet?.title || accountName;
+    }
+  } catch (err) {
+    console.warn('[oauthExchange] Failed to fetch YouTube channel profile metrics:', err.message);
+  }
 
-  return { accountId, accountName, email: '', accessToken: access_token, refreshToken: refresh_token, expiresIn: expires_in, scope: 'r_basicprofile w_member_social' };
+  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token };
 }
 
-// ─── Pinterest ────────────────────────────────────────────────────────────────
+async function exchangeLinkedInToken(clientId, clientSecret, code, redirectUri) {
+  const tokenRes = await axios.post(
+    PLATFORM_CONFIGS.linkedin.tokenEndpoint,
+    new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
 
-async function exchangePinterestToken(clientId, clientSecret, code, redirectUri, config) {
+  const { access_token } = tokenRes.data;
+  let accountId = 'linkedin-profile', accountName = 'LinkedIn Member';
+
+  try {
+    const profileRes = await axios.get('https://api.linkedin.com/v2/userinfo', {
+      headers: { Authorization: `Bearer ${access_token}` }
+    });
+    accountId = profileRes.data.sub || accountId;
+    accountName = `${profileRes.data.given_name || ''} ${profileRes.data.family_name || ''}`.trim() || accountName;
+  } catch (err) {
+    console.warn('[oauthExchange] Failed to query userinfo profile for LinkedIn:', err.message);
+  }
+
+  return { accountId, accountName, accessToken: access_token };
+}
+
+async function exchangePinterestToken(clientId, clientSecret, code, redirectUri) {
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const tokenRes = await axios.post(
-    config.tokenEndpoint,
+    PLATFORM_CONFIGS.pinterest.tokenEndpoint,
     new URLSearchParams({ code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
     { headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
 
-  const { access_token, refresh_token, expires_in } = tokenRes.data;
+  const { access_token, refresh_token } = tokenRes.data;
   let accountId = 'pinterest-user', accountName = 'Pinterest Account';
 
   try {
     const userRes = await axios.get('https://api.pinterest.com/v5/user_account', {
       headers: { Authorization: `Bearer ${access_token}` },
     });
-    accountId   = userRes.data.username || accountId;
+    accountId = userRes.data.username || accountId;
     accountName = userRes.data.username || accountName;
-  } catch (err) { console.warn('Could not fetch Pinterest user info:', err.message); }
+  } catch (err) {
+    console.warn('[oauthExchange] Could not retrieve user account context metadata for Pinterest:', err.message);
+  }
 
-  return { accountId, accountName, email: '', accessToken: access_token, refreshToken: refresh_token, expiresIn: expires_in, scope: 'boards:read,pins:read,pins:create' };
+  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token };
 }
 
-// ─── Snapchat ─────────────────────────────────────────────────────────────────
-
-async function exchangeSnapchatToken(clientId, clientSecret, code, redirectUri, config) {
+async function exchangeSnapchatToken(clientId, clientSecret, code, redirectUri) {
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const tokenRes = await axios.post(
-    config.tokenEndpoint,
+    PLATFORM_CONFIGS.snapchat.tokenEndpoint,
     new URLSearchParams({ code, grant_type: 'authorization_code', redirect_uri: redirectUri }),
     { headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
 
-  const { access_token, refresh_token, expires_in } = tokenRes.data;
+  const { access_token, refresh_token } = tokenRes.data;
   let accountId = 'snapchat-user', accountName = 'Snapchat Account';
 
   try {
@@ -344,7 +248,85 @@ async function exchangeSnapchatToken(clientId, clientSecret, code, redirectUri, 
     });
     accountId   = userRes.data.data?.me?.externalId  || accountId;
     accountName = userRes.data.data?.me?.displayName || accountName;
-  } catch (err) { console.warn('Could not fetch Snapchat user info:', err.message); }
+  } catch (err) {
+    console.warn('[oauthExchange] Could not retrieve Snapchat profile metadata details:', err.message);
+  }
 
-  return { accountId, accountName, email: '', accessToken: access_token, refreshToken: refresh_token, expiresIn: expires_in, scope: 'snapchat-marketing-api' };
+  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token };
 }
+
+// ─── Main Execution Lambda Core Endpoint ─────────────────────────────────────
+
+exports.handler = async (event) => {
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: CORS, body: '' };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'HTTP Method Request option not allowed' }) };
+  }
+
+  try {
+    const { platform, code, redirectUri, userId } = JSON.parse(event.body);
+
+    if (!platform || !code || !redirectUri || !userId) {
+      return {
+        statusCode: 400,
+        headers: CORS,
+        body: JSON.stringify({ error: 'Missing mandatory payload request parameters: platform, code, redirectUri, userId' }),
+      };
+    }
+
+    if (!PLATFORM_CONFIGS[platform]) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Requested OAuth target platform options not supported: ${platform}` }) };
+    }
+
+    const clientId     = getClientId(platform);
+    const clientSecret = getClientSecret(platform);
+    let exchangeResult = null;
+
+    switch (platform) {
+      case 'facebook':
+      case 'instagram':
+        exchangeResult = await exchangeFacebookToken(clientId, clientSecret, code, redirectUri);
+        break;
+      case 'tiktok':
+        exchangeResult = await exchangeTikTokToken(clientId, clientSecret, code, redirectUri);
+        break;
+      case 'twitter':
+        exchangeResult = await exchangeTwitterToken(clientId, clientSecret, code, redirectUri);
+        break;
+      case 'youtube':
+        exchangeResult = await exchangeYouTubeToken(clientId, clientSecret, code, redirectUri);
+        break;
+      case 'linkedin':
+        exchangeResult = await exchangeLinkedInToken(clientId, clientSecret, code, redirectUri);
+        break;
+      case 'pinterest':
+        exchangeResult = await exchangePinterestToken(clientId, clientSecret, code, redirectUri);
+        break;
+      case 'snapchat':
+        exchangeResult = await exchangeSnapchatToken(clientId, clientSecret, code, redirectUri);
+        break;
+      default:
+        throw new Error(`Execution adapter for target platform routing not mapped out internally: ${platform}`);
+    }
+
+    return {
+      statusCode: 200,
+      headers: CORS,
+      body: JSON.stringify({ success: true, ...exchangeResult }),
+    };
+
+  } catch (error) {
+    console.error('[oauthExchange] Process handling crashed:', error.response?.data || error.message);
+    return {
+      statusCode: 500,
+      headers: CORS,
+      body: JSON.stringify({
+        success: false,
+        error: error.response?.data?.error_description || error.response?.data?.error || error.message,
+      }),
+    };
+  }
+};

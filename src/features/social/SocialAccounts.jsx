@@ -1,7 +1,7 @@
 // SocialAccounts.jsx
 // Connect and manage social media accounts
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
   getConnectedAccounts,
@@ -48,19 +48,28 @@ function SocialAccounts() {
   const [connectingPlatform, setConnectingPlatform] = useState(null);
   const [error, setError]                     = useState('');
   const [success, setSuccess]                 = useState('');
+  
+  // Guard reference to prevent race conditions during OAuth callback processing mounts
+  const callbackProcessed = useRef(false);
 
   // ─── Fetch accounts ──────────────────────────────────────────────────────────
 
   const fetchAccounts = useCallback(async () => {
     if (!currentUser) return;
     setLoading(true);
-    const result = await getConnectedAccounts(currentUser.uid);
-    if (result.success) {
-      setConnectedAccounts(result.accounts);
-    } else {
-      setError('Failed to load accounts. Please refresh the page.');
+    try {
+      const result = await getConnectedAccounts(currentUser.uid);
+      if (result && result.success) {
+        setConnectedAccounts(result.accounts || []);
+      } else {
+        setError('Failed to load accounts. Please refresh the page.');
+      }
+    } catch (err) {
+      console.error('Error fetching accounts:', err);
+      setError('An error occurred while loading connected channels.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [currentUser]);
 
   // ─── OAuth callback handling ─────────────────────────────────────────────────
@@ -79,15 +88,17 @@ function SocialAccounts() {
     // Auth hasn't loaded yet — the effect will re-run when currentUser is set
     if (!currentUser) return;
 
+    // Prevent multi-triggering hooks in strict or rapid mounting lifecycles
+    if (callbackProcessed.current) return;
+    callbackProcessed.current = true;
+
     const handler = CALLBACK_HANDLERS[state];
 
     if (!handler) {
-      // `state` param is missing or unrecognised — don't silently fall through
       setError(
         `Unrecognised OAuth callback (state="${state}"). ` +
         'Please try connecting the account again.'
       );
-      // Still clean the URL so a refresh doesn't re-trigger this
       window.history.replaceState({}, document.title, window.location.pathname);
       return;
     }
@@ -95,25 +106,32 @@ function SocialAccounts() {
     setConnectingPlatform(state);
     setLoading(true);
 
-    const result = await handler(code, currentUser.uid);
+    try {
+      const result = await handler(code, currentUser.uid);
 
-    if (result.success) {
-      setSuccess(`${formatPlatformName(state)} account connected successfully!`);
-      await fetchAccounts();
-    } else {
-      setError(result.error || `Failed to connect ${formatPlatformName(state)} account.`);
+      if (result && result.success) {
+        setSuccess(`${formatPlatformName(state)} account connected successfully!`);
+        await fetchAccounts();
+      } else {
+        setError(result?.error || `Failed to connect ${formatPlatformName(state)} account.`);
+      }
+    } catch (err) {
+      console.error('OAuth callback execution error:', err);
+      setError(`A system network exception blocked the ${formatPlatformName(state)} handshake.`);
+    } finally {
+      // Clean the URL so a page refresh doesn't re-attempt the exchange
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setConnectingPlatform(null);
+      setLoading(false);
     }
-
-    // Clean the URL so a page refresh doesn't re-attempt the exchange
-    window.history.replaceState({}, document.title, window.location.pathname);
-    setConnectingPlatform(null);
-    setLoading(false);
   }, [currentUser, fetchAccounts]);
 
   useEffect(() => {
-    fetchAccounts();
-    handleOAuthCallback();
-  }, [fetchAccounts, handleOAuthCallback]);
+    if (currentUser) {
+      fetchAccounts();
+      handleOAuthCallback();
+    }
+  }, [currentUser, fetchAccounts, handleOAuthCallback]);
 
   // Auto-clear alerts after 5 seconds
   useEffect(() => {
@@ -150,26 +168,27 @@ function SocialAccounts() {
   const handleDisconnect = async (accountId, platformName) => {
     if (!confirm(`Disconnect your ${platformName} account?`)) return;
 
-    const result = await disconnectAccount(accountId);
-
-    if (result.success) {
-      setSuccess(`${platformName} account disconnected.`);
-      await fetchAccounts();
-    } else {
-      setError(`Failed to disconnect ${platformName} account.`);
+    try {
+      const result = await disconnectAccount(accountId);
+      if (result && result.success) {
+        setSuccess(`${platformName} account disconnected.`);
+        await fetchAccounts();
+      } else {
+        setError(`Failed to disconnect ${platformName} account.`);
+      }
+    } catch (err) {
+      console.error('Account disconnection error:', err);
+      setError(`An unexpected error blocked removing your ${platformName} account.`);
     }
   };
 
   // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+  const getAccountsForPlatform = (platformId) =>
+    connectedAccounts.filter(acc => acc.platform === platformId);
+
   const isConnected = (platformId) =>
     connectedAccounts.some(acc => acc.platform === platformId);
-
-  const getAccountName = (platformId) =>
-    connectedAccounts.find(acc => acc.platform === platformId)?.accountName || '';
-
-  const getAccountDocId = (platformId) =>
-    connectedAccounts.find(acc => acc.platform === platformId)?.id || null;
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
@@ -201,7 +220,7 @@ function SocialAccounts() {
             </div>
           )}
 
-          {loading ? (
+          {loading && connectedAccounts.length === 0 ? (
             <div className="loading-state">
               <Loader size={20} className="spin" />
               {connectingPlatform
@@ -211,10 +230,9 @@ function SocialAccounts() {
           ) : (
             <div className="platforms-grid">
               {PLATFORMS.map(platform => {
-                const connected    = isConnected(platform.id);
-                const accountName  = getAccountName(platform.id);
-                const accountDocId = getAccountDocId(platform.id);
-                const isConnecting = connectingPlatform === platform.id;
+                const platformAccounts = getAccountsForPlatform(platform.id);
+                const connected        = platformAccounts.length > 0;
+                const isConnecting     = connectingPlatform === platform.id;
 
                 return (
                   <div
@@ -226,26 +244,36 @@ function SocialAccounts() {
                         <span className="platform-icon">{platform.icon}</span>
                         <div>
                           <h3>{platform.name}</h3>
-                          {connected && (
-                            <span className="account-name">{accountName}</span>
+                          {!connected && (
+                            <span className="account-status-disconnected">Not connected</span>
                           )}
                         </div>
                       </div>
-                      {connected && (
-                        <CheckCircle size={24} className="connected-icon" />
-                      )}
                     </div>
 
+                    {/* Support mapping through multiple accounts/pages within the same platform type */}
+                    {connected && (
+                      <div className="connected-accounts-list">
+                        {platformAccounts.map((account) => (
+                          <div key={account.id || account.accountId} className="account-row-item">
+                            <div className="account-meta-details">
+                              <CheckCircle size={16} className="connected-icon" />
+                              <span className="account-name">{account.accountName || 'Connected Channel'}</span>
+                            </div>
+                            <button
+                              className="btn-row-disconnect"
+                              onClick={() => handleDisconnect(account.id, platform.name)}
+                              title={`Disconnect ${account.accountName}`}
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="platform-footer">
-                      {connected ? (
-                        <button
-                          className="btn-disconnect"
-                          onClick={() => handleDisconnect(accountDocId, platform.name)}
-                        >
-                          <X size={16} />
-                          Disconnect
-                        </button>
-                      ) : (
+                      {!connected && (
                         <button
                           className="btn-connect"
                           style={{ backgroundColor: platform.color }}
@@ -256,6 +284,16 @@ function SocialAccounts() {
                             ? <Loader size={16} className="spin" />
                             : <Link2 size={16} />}
                           {isConnecting ? 'Connecting…' : `Connect ${platform.name}`}
+                        </button>
+                      )}
+                      {connected && (
+                        <button
+                          className="btn-connect-more"
+                          onClick={() => handleConnect(platform.id)}
+                          disabled={isConnecting}
+                        >
+                          <Link2 size={14} />
+                          Connect Another Page
                         </button>
                       )}
                     </div>

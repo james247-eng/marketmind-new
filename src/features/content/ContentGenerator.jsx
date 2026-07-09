@@ -1,7 +1,6 @@
 // ContentGenerator.jsx
 
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -13,6 +12,7 @@ import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { Sparkles, Upload, X, Loader, Copy, CheckCircle, Send } from 'lucide-react';
 import './ContentGenerator.css';
+
 const PLATFORMS = [
   { key: 'twitter',   label: 'Twitter/X',  icon: '🐦', charLimit: 280  },
   { key: 'linkedin',  label: 'LinkedIn',   icon: '💼', charLimit: 3000 },
@@ -135,25 +135,41 @@ function ContentGenerator() {
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [postResults,      setPostResults]      = useState([]);
 
+  // Ref tracking to verify component state mounts safely across concurrent async flows
+  const isMounted = useRef(true);
+
   useEffect(() => {
+    isMounted.current = true;
     if (!currentUser) return;
+
     // Fetch businesses
     (async () => {
       try {
         const q = query(collection(db, 'businesses'), where('userId', '==', currentUser.uid));
         const snap = await getDocs(q);
+        if (!isMounted.current) return;
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setBusinesses(list);
         if (list.length > 0) setFormData(prev => ({ ...prev, businessId: list[0].id }));
-      } catch (err) { console.error('Error fetching businesses:', err); }
+      } catch (err) { 
+        console.error('Error fetching businesses:', err); 
+      }
     })();
+
     // Fetch connected social accounts
     (async () => {
       try {
         const result = await getConnectedAccounts(currentUser.uid);
-        if (result.success) setConnectedAccounts(result.accounts);
-      } catch (err) { console.error('Error fetching accounts:', err); }
+        if (!isMounted.current) return;
+        if (result && result.success) setConnectedAccounts(result.accounts || []);
+      } catch (err) { 
+        console.error('Error fetching accounts:', err); 
+      }
     })();
+
+    return () => {
+      isMounted.current = false;
+    };
   }, [currentUser]);
 
   const handleChange   = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -164,9 +180,12 @@ function ContentGenerator() {
     if (!v.valid) { setError(v.error); return; }
     setUploadedFile(file); setError('');
     const reader = new FileReader();
-    reader.onload = (e) => setFilePreview(e.target.result);
+    reader.onload = (e) => {
+      if (isMounted.current) setFilePreview(e.target.result);
+    };
     reader.readAsDataURL(file);
   };
+
   const handleFileSelect = (e) => { if (e.target.files[0]) processFile(e.target.files[0]); };
   const removeFile = () => { setUploadedFile(null); setFilePreview(null); };
   const handleDrag = (e) => {
@@ -251,7 +270,9 @@ function ContentGenerator() {
 
       if (formData.includeResearch) {
         const research = await conductResearch(formData.prompt, biz.niche);
-        if (research.success) setResearchInsights(research.insights);
+        if (research && research.success && isMounted.current) {
+          setResearchInsights(research.insights || '');
+        }
       }
 
       const result = await generateContent(
@@ -261,8 +282,10 @@ function ContentGenerator() {
         recentPostExamples
       );
 
-      if (result.success) {
-        setRawContent(result.content);
+      if (!isMounted.current) return;
+
+      if (result && result.success) {
+        setRawContent(result.content || '');
         const parsed = parseGeneratedContent(result.content);
         if (parsed) {
           // Add facebook copy from twitter if not present
@@ -276,13 +299,13 @@ function ContentGenerator() {
           setError('Content generated but could not be split by platform. Edit below.');
         }
       } else {
-        setError(result.error || 'Failed to generate content.');
+        setError(result?.error || 'Failed to generate content.');
       }
     } catch (err) {
-      setError('Failed to generate content. Please try again.');
+      if (isMounted.current) setError('Failed to generate content. Please try again.');
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isMounted.current) setLoading(false);
     }
   };
 
@@ -290,8 +313,12 @@ function ContentGenerator() {
     try {
       await navigator.clipboard.writeText(editedContent[platformKey] || '');
       setCopiedPlatform(platformKey);
-      setTimeout(() => setCopiedPlatform(null), 2000);
-    } catch { setError('Failed to copy.'); }
+      setTimeout(() => {
+        if (isMounted.current) setCopiedPlatform(null);
+      }, 2000);
+    } catch { 
+      setError('Failed to copy.'); 
+    }
   };
 
   const toggleAccount = (accountId) => {
@@ -314,20 +341,29 @@ function ContentGenerator() {
       if (uploadedFile && !imageUrl) {
         setUploadProgress(50);
         const up = await uploadFile(uploadedFile, currentUser.uid, formData.businessId);
-        if (up.success) { imageUrl = up.url; setSavedImageUrl(imageUrl); setUploadProgress(100); }
-        else throw new Error('File upload failed');
+        if (up && up.success) { 
+          imageUrl = up.url; 
+          setSavedImageUrl(imageUrl); 
+          setUploadProgress(100); 
+        } else {
+          throw new Error('File upload failed');
+        }
       }
 
       const accountsToPost = connectedAccounts.filter(a => selectedAccounts.includes(a.id));
       const results        = await postToMultiplePlatforms(accountsToPost, editedContent, imageUrl);
 
-      setPostResults(results);
-      const allOk = results.every(r => r.success);
+      if (!isMounted.current) return;
+      setPostResults(results || []);
+      const allOk = results && results.every(r => r.success);
       setSuccess(allOk ? '✅ Posted successfully to all platforms!' : '⚠️ Posted with some errors. See results below.');
     } catch (err) {
-      setError('Failed to post content: ' + err.message);
+      if (isMounted.current) setError('Failed to post content: ' + err.message);
     } finally {
-      setPosting(false); setUploadProgress(0);
+      if (isMounted.current) {
+        setPosting(false); 
+        setUploadProgress(0);
+      }
     }
   };
 
@@ -339,8 +375,13 @@ function ContentGenerator() {
       if (uploadedFile && !imageUrl) {
         setUploadProgress(50);
         const up = await uploadFile(uploadedFile, currentUser.uid, formData.businessId);
-        if (up.success) { imageUrl = up.url; setSavedImageUrl(imageUrl); setUploadProgress(100); }
-        else throw new Error('File upload failed');
+        if (up && up.success) { 
+          imageUrl = up.url; 
+          setSavedImageUrl(imageUrl); 
+          setUploadProgress(100); 
+        } else {
+          throw new Error('File upload failed');
+        }
       }
       const saveResult = await saveContent({
         userId: currentUser.uid, businessId: formData.businessId,
@@ -348,14 +389,22 @@ function ContentGenerator() {
         content: parsedContent ? JSON.stringify(editedContent) : rawContent,
         imageUrl, researchInsights: researchInsights || null,
       });
-      if (saveResult.success) {
+      if (saveResult && saveResult.success && isMounted.current) {
         setSuccess('Content saved! View it in Content History.');
-        setTimeout(() => { setSuccess(''); resetForm(); }, 3000);
+        setTimeout(() => { 
+          if (isMounted.current) {
+            setSuccess(''); 
+            resetForm(); 
+          }
+        }, 3000);
       }
     } catch (err) {
-      setError('Failed to save content.');
+      if (isMounted.current) setError('Failed to save content.');
     } finally {
-      setLoading(false); setUploadProgress(0);
+      if (isMounted.current) {
+        setLoading(false); 
+        setUploadProgress(0);
+      }
     }
   };
 

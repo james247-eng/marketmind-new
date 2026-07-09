@@ -21,130 +21,224 @@ const PLATFORMS = [
 const parseContent = (raw) => {
   if (!raw) return null;
   if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  
   const strategies = [
-    () => JSON.parse(raw),
+    () => JSON.parse(raw.trim()),
     () => JSON.parse(raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()),
-    () => { const m = raw.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); throw new Error(); },
+    () => {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) return JSON.parse(match[0]);
+      throw new Error();
+    }
   ];
+
   for (const strategy of strategies) {
     try {
-      const parsed = strategy();
-      if (parsed && typeof parsed === 'object' && PLATFORMS.some(p => parsed[p.key])) return parsed;
-    } catch { continue; }
+      const clean = strategy();
+      if (clean && typeof clean === 'object') return clean;
+    } catch {
+      continue;
+    }
   }
   return null;
 };
 
 function ContentHistory() {
-  const [sidebarOpen,       setSidebarOpen]       = useState(false);
-  const { currentUser }                           = useAuth();
-  const [contentList,       setContentList]       = useState([]);
-  const [loading,           setLoading]           = useState(true);
-  const [error,             setError]             = useState('');
-  const [copiedId,          setCopiedId]          = useState(null);
-  const [activeTabs,        setActiveTabs]        = useState({});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { currentUser } = useAuth();
+  const [businesses, setBusinesses] = useState([]);
+  const [selectedBusinessId, setSelectedBusinessId] = useState('');
+  const [historyItems, setHistoryItems] = useState([]);
   const [connectedAccounts, setConnectedAccounts] = useState([]);
-  const [repostOpen,        setRepostOpen]        = useState({});
-  const [repostSelected,    setRepostSelected]    = useState({});
-  const [repostLoading,     setRepostLoading]     = useState({});
-  const [repostResults,     setRepostResults]     = useState({});
+  
+  const [loading, setLoading] = useState(true);
+  const [repostLoadingId, setRepostLoadingId] = useState(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const fetchContent = useCallback(async () => {
+  // UI Multi-State Action Trackers Keyed by Document ID to prevent index lookups crossing contexts
+  const [expandedItemId, setExpandedItemId] = useState(null);
+  const [copiedPlatformKey, setCopiedPlatformKey] = useState(null);
+  const [selectedAccountsMap, setSelectedAccountsMap] = useState({});
+  const [repostResultsMap, setRepostResultsMap] = useState({});
+
+  // ─── Data Hydration Layer ──────────────────────────────────────────────────
+
+  const fetchInitialContext = useCallback(async () => {
     if (!currentUser) return;
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
+
     try {
-      const q = query(
+      // 1. Fetch connected workspaces
+      const bizQuery = query(collection(db, 'businesses'), where('userId', '==', currentUser.uid));
+      const bizSnapshot = await getDocs(bizQuery);
+      const bizList = bizSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setBusinesses(bizList);
+
+      if (bizList.length > 0) {
+        setSelectedBusinessId(bizList[0].id);
+      }
+
+      // 2. Fetch linked social platform distribution channels
+      const accResult = await getConnectedAccounts(currentUser.uid);
+      if (accResult && accResult.success) {
+        setConnectedAccounts(accResult.accounts || []);
+      }
+    } catch (err) {
+      console.error('Context allocation failure:', err);
+      setError('System could not pre-populate active user workspace states.');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser]);
+
+  const fetchHistory = useCallback(async () => {
+    if (!currentUser || !selectedBusinessId) return;
+    setLoading(true);
+    setError('');
+    
+    try {
+      const historyQuery = query(
         collection(db, 'content'),
         where('userId', '==', currentUser.uid),
+        where('businessId', '==', selectedBusinessId),
         orderBy('createdAt', 'desc')
       );
-      const snap  = await getDocs(q);
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setContentList(items);
-      const tabs = {};
-      items.forEach(item => { tabs[item.id] = 'twitter'; });
-      setActiveTabs(tabs);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to load content history.');
-    } finally { setLoading(false); }
-  }, [currentUser]);
+      
+      let snapshot;
+      try {
+        snapshot = await getDocs(historyQuery);
+      } catch (indexErr) {
+        console.warn('Fallback execution triggered. Primary Firestore custom index missing:', indexErr.message);
+        const fallbackQuery = query(
+          collection(db, 'content'),
+          where('userId', '==', currentUser.uid),
+          where('businessId', '==', selectedBusinessId)
+        );
+        snapshot = await getDocs(fallbackQuery);
+      }
 
-  useEffect(() => { fetchContent(); }, [fetchContent]);
+      const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Client-side execution sorting backup block
+      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      setHistoryItems(items);
+    } catch (err) {
+      console.error('History lookup thread crashed:', err);
+      setError('Failed to fetch past content options from your workspace.');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser, selectedBusinessId]);
 
   useEffect(() => {
-    if (!currentUser) return;
-    getConnectedAccounts(currentUser.uid).then(r => {
-      if (r.success) setConnectedAccounts(r.accounts || []);
-    });
-  }, [currentUser]);
+    fetchInitialContext();
+  }, [fetchInitialContext]);
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this content? This cannot be undone.')) return;
-    try {
-      await deleteDoc(doc(db, 'content', id));
-      setContentList(prev => prev.filter(item => item.id !== id));
-    } catch { setError('Failed to delete.'); }
-  };
+  useEffect(() => {
+    if (selectedBusinessId) {
+      fetchHistory();
+    }
+  }, [selectedBusinessId, fetchHistory]);
 
-  const handleCopy = async (id, text) => {
+  // Alert dismiss auto-lifecycle hook
+  useEffect(() => {
+    if (!error && !success) return;
+    const t = setTimeout(() => { setError(''); setSuccess(''); }, 6000);
+    return () => clearTimeout(t);
+  }, [error, success]);
+
+  // ─── Operations Logic ──────────────────────────────────────────────────────
+
+  const handleCopyText = async (text, platformKey) => {
     try {
       await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch { setError('Failed to copy.'); }
-  };
-
-  const toggleRepostPanel = (id) => {
-    const opening = !repostOpen[id];
-    setRepostOpen(prev => ({ ...prev, [id]: opening }));
-    setRepostResults(prev => ({ ...prev, [id]: [] }));
-    // Do NOT pre-select all — user must deliberately choose which accounts to post to
-    if (opening) {
-      setRepostSelected(prev => ({ ...prev, [id]: [] }));
+      setCopiedPlatformKey(platformKey);
+      setTimeout(() => setCopiedPlatformKey(null), 2000);
+    } catch {
+      setError('Unable to copy requested text blocks to your local clipboard.');
     }
   };
 
-  const toggleAccount = (cardId, accountId) => {
-    setRepostSelected(prev => {
-      const current = prev[cardId] || [];
-      return {
-        ...prev,
-        [cardId]: current.includes(accountId)
-          ? current.filter(id => id !== accountId)
-          : [...current, accountId],
-      };
+  const handleDeleteItem = async (itemId, e) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to permanently delete this content log from your historical archives?')) return;
+    
+    try {
+      await deleteDoc(doc(db, 'content', itemId));
+      setSuccess('Log item permanently cleared from dashboard profile history.');
+      setHistoryItems(prev => prev.filter(item => item.id !== itemId));
+      if (expandedItemId === itemId) setExpandedItemId(null);
+    } catch (err) {
+      console.error('Deletion failure:', err);
+      setError('System network block prevented full document asset purging.');
+    }
+  };
+
+  const toggleAccountSelection = (itemId, accountId) => {
+    setSelectedAccountsMap(prev => {
+      const currentSelection = prev[itemId] || [];
+      const updated = currentSelection.includes(accountId)
+        ? currentSelection.filter(id => id !== accountId)
+        : [...currentSelection, accountId];
+      return { ...prev, [itemId]: updated };
     });
   };
 
-  const handleRepost = async (item) => {
-    const cardId   = item.id;
-    const selected = repostSelected[cardId] || [];
-    if (selected.length === 0) { setError('Select at least one account to repost to.'); return; }
-    setRepostLoading(prev => ({ ...prev, [cardId]: true }));
-    setRepostResults(prev => ({ ...prev, [cardId]: [] }));
+  const handleRepostExecution = async (item) => {
+    const itemSelectedAccounts = selectedAccountsMap[item.id] || [];
+    if (itemSelectedAccounts.length === 0) {
+      alert('Please toggle on at least one linked account channel check box before executing a repost payload dispatch.');
+      return;
+    }
+
+    setRepostLoadingId(item.id);
     setError('');
+    
     try {
-      const accounts = connectedAccounts.filter(a => selected.includes(a.id));
-      const parsed   = parseContent(item.content);
-      const result   = await postToMultiplePlatforms(
-        parsed || { facebook: item.content, twitter: item.content },
-        accounts,
+      const targetAccounts = connectedAccounts.filter(acc => itemSelectedAccounts.includes(acc.id));
+      const normalizedPayload = parseContent(item.content) || item.content;
+
+      const postingOutcomes = await postToMultiplePlatforms(
+        targetAccounts,
+        normalizedPayload,
         item.imageUrl || null
       );
-      setRepostResults(prev => ({ ...prev, [cardId]: result.results || [] }));
+
+      setRepostResultsMap(prev => ({ ...prev, [item.id]: postingOutcomes }));
+      
+      const distinctFailures = postingOutcomes.some(res => !res.success);
+      if (distinctFailures) {
+        setSuccess('⚠️ Repost complete but partial processing block errors were caught across distribution channels.');
+      } else {
+        setSuccess('🎉 Repost distribution processes fully executed across chosen platforms!');
+      }
     } catch (err) {
-      setError('Repost failed: ' + err.message);
+      console.error('Repost processing engine crash context:', err);
+      setError(`Critical posting termination exception raised: ${err.message}`);
     } finally {
-      setRepostLoading(prev => ({ ...prev, [cardId]: false }));
+      setRepostLoadingId(null);
     }
   };
 
-  const formatDate = (ts) => {
-    if (!ts) return '';
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const toggleExpandRow = (itemId) => {
+    setExpandedItemId(prev => (prev === itemId ? null : itemId));
+    // Seed selected account items automatically with matching account channels on expand
+    if (!selectedAccountsMap[itemId]) {
+      const targetItem = historyItems.find(i => i.id === itemId);
+      const parsed = parseContent(targetItem?.content);
+      if (parsed) {
+        const structuralPlatforms = Object.keys(parsed);
+        const automaticallyMatchedIds = connectedAccounts
+          .filter(acc => structuralPlatforms.includes(acc.platform))
+          .map(acc => acc.id);
+        setSelectedAccountsMap(prev => ({ ...prev, [itemId]: automaticallyMatchedIds }));
+      }
+    }
   };
+
+  // ─── Layout Output ─────────────────────────────────────────────────────────
 
   return (
     <div className="app">
@@ -152,158 +246,219 @@ function ContentHistory() {
       <main className="main-content">
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <div className="content-area">
-
+          
           <div className="page-header">
             <div>
               <h1>Content History</h1>
-              <p>View, repost, and manage your previously generated content</p>
+              <p>Review, repurpose, and verify logs of generated content templates across linked profiles</p>
             </div>
-            <button className="btn-refresh" onClick={fetchContent}>
-              <RefreshCw size={16} /> Refresh
-            </button>
+            
+            {businesses.length > 0 && (
+              <div className="business-selector-wrap">
+                <select 
+                  className="business-history-select"
+                  value={selectedBusinessId} 
+                  onChange={(e) => setSelectedBusinessId(e.target.value)}
+                >
+                  {businesses.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
-          {error && <div className="alert alert-error"><AlertCircle size={18} /> {error}</div>}
-
-          {loading ? (
-            <div className="loading-state">
-              <Loader size={28} className="spin" />
-              <p>Loading your content...</p>
+          {error && (
+            <div className="alert alert-error" role="alert">
+              <AlertCircle size={18} /> {error}
             </div>
-          ) : contentList.length === 0 ? (
-            <div className="empty-state">
-              <FileText size={64} className="empty-icon" />
-              <h2>No content yet</h2>
-              <p>Generate your first piece of content to see it here</p>
-              <a href="/generate" className="btn-primary-link">Generate Content →</a>
+          )}
+          {success && (
+            <div className="alert alert-success" role="status">
+              <CheckCircle size={18} /> {success}
+            </div>
+          )}
+
+          {loading && historyItems.length === 0 ? (
+            <div className="loading-state">
+              <Loader size={24} className="spin" />
+              <span>Querying saved records metrics...</span>
+            </div>
+          ) : historyItems.length === 0 ? (
+            <div className="empty-state-container">
+              <FileText size={48} className="empty-icon" />
+              <h3>No History Found</h3>
+              <p>You haven't saved any generation outputs for this business workspace yet.</p>
             </div>
           ) : (
-            <div className="history-grid">
-              {contentList.map(item => {
-                const parsed             = parseContent(item.content);
-                const activeTab          = activeTabs[item.id] || 'twitter';
-                const activeText         = parsed ? (parsed[activeTab] || '') : (item.content || '');
-                const availablePlatforms = parsed
-                  ? PLATFORMS.filter(p => parsed[p.key] && parsed[p.key].trim())
-                  : [];
-                const isRepostOpen      = repostOpen[item.id];
-                const isRepostLoading   = repostLoading[item.id];
-                const thisRepostResults = repostResults[item.id] || [];
-                const selectedAccounts  = repostSelected[item.id] || [];
+            <div className="history-list-wrapper">
+              {historyItems.map((item) => {
+                const parsedPayload = parseContent(item.content);
+                const isExpanded = expandedItemId === item.id;
+                const activeSelections = selectedAccountsMap[item.id] || [];
+                const itemPostOutcomes = repostResultsMap[item.id] || [];
+                const isCurrentlyPosting = repostLoadingId === item.id;
 
                 return (
-                  <div key={item.id} className="history-card">
-
-                    {/* Header */}
-                    <div className="history-card-header">
-                      <div className="history-card-meta">
-                        {item.tone && <span className={`tone-badge tone-${item.tone}`}>{item.tone}</span>}
-                        {item.status && <span className={`status-badge status-${item.status}`}>{item.status}</span>}
-                        <span className="history-date">{formatDate(item.createdAt)}</span>
+                  <div 
+                    key={item.id} 
+                    className={`history-card-item ${isExpanded ? 'history-card-item--expanded' : ''}`}
+                    onClick={() => toggleExpandRow(item.id)}
+                  >
+                    
+                    {/* Compact Card Header Interface Row */}
+                    <div className="history-card-summary">
+                      <div className="history-meta-block">
+                        <span className="history-timestamp-badge">
+                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                          }) : 'Date Unspecified'}
+                        </span>
+                        <h4 className="history-prompt-summary-text">{item.prompt || 'Manual Draft Content'}</h4>
+                        <span className={`status-badge-indicator status-badge-indicator--${item.status || 'draft'}`}>
+                          {item.status || 'draft'}
+                        </span>
                       </div>
-                      <div className="history-card-actions">
-                        <button className="btn-icon" onClick={() => handleCopy(item.id, activeText)} title="Copy">
-                          {copiedId === item.id
-                            ? <CheckCircle size={16} className="icon-success" />
-                            : <Copy size={16} />}
-                        </button>
-                        <button
-                          className={`btn-icon btn-repost-toggle ${isRepostOpen ? 'active' : ''}`}
-                          onClick={() => toggleRepostPanel(item.id)}
-                          title="Repost">
-                          <Send size={16} />
-                        </button>
-                        <button className="btn-icon btn-danger" onClick={() => handleDelete(item.id)} title="Delete">
+                      
+                      <div className="history-row-actions" onClick={e => e.stopPropagation()}>
+                        <button 
+                          className="action-btn-trigger action-btn-trigger--delete"
+                          onClick={(e) => handleDeleteItem(item.id, e)}
+                          title="Purge record"
+                        >
                           <Trash2 size={16} />
+                        </button>
+                        <button className="action-btn-trigger action-btn-trigger--expand">
+                          <RefreshCw size={16} className={isCurrentlyPosting ? 'spin' : ''} />
                         </button>
                       </div>
                     </div>
 
-                    {/* Prompt */}
-                    {item.prompt && (
-                      <div className="history-prompt">
-                        <span className="prompt-label">Prompt</span>
-                        <p>{item.prompt}</p>
-                      </div>
-                    )}
-
-                    {/* Image */}
-                    {item.imageUrl && (
-                      <div className="history-image-wrap">
-                        <img src={item.imageUrl} alt="Attached media" className="history-image" />
-                      </div>
-                    )}
-
-                    {/* Platform tabs + content */}
-                    {parsed && availablePlatforms.length > 0 ? (
-                      <div className="history-platforms">
-                        <div className="history-tabs">
-                          {availablePlatforms.map(p => (
-                            <button
-                              key={p.key}
-                              className={`history-tab ${activeTab === p.key ? 'active' : ''}`}
-                              style={activeTab === p.key ? { borderBottomColor: p.color, color: p.color } : {}}
-                              onClick={() => setActiveTabs(prev => ({ ...prev, [item.id]: p.key }))}>
-                              {p.icon} {p.label}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="history-content-body">
-                          <p className="history-content-text">{parsed[activeTab] || ''}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="history-content-body">
-                        <p className="history-content-text">{item.content || ''}</p>
-                      </div>
-                    )}
-
-                    {/* Research accordion */}
-                    {item.researchInsights && (
-                      <details className="research-accordion">
-                        <summary>📊 View market research insights</summary>
-                        <div className="research-body"><p>{item.researchInsights}</p></div>
-                      </details>
-                    )}
-
-                    {/* Repost panel */}
-                    {isRepostOpen && (
-                      <div className="repost-panel">
-                        <p className="repost-panel-title">📤 Repost to:</p>
-                        {connectedAccounts.length === 0 ? (
-                          <p className="repost-hint">No connected accounts. <a href="/accounts">Connect platforms →</a></p>
-                        ) : (
-                          <div className="repost-accounts">
-                            {connectedAccounts.map(account => (
-                              <label key={account.id} className="repost-account-label">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedAccounts.includes(account.id)}
-                                  onChange={() => toggleAccount(item.id, account.id)}
-                                />
-                                <span>{account.platform.toUpperCase()} — {account.accountName}</span>
-                              </label>
-                            ))}
+                    {/* Extended Interactive Detailed Display Block Drawer */}
+                    {isExpanded && (
+                      <div className="history-card-drawer-details" onClick={e => e.stopPropagation()}>
+                        
+                        {item.researchInsights && (
+                          <div className="drawer-insight-highlight-pane">
+                            <h5>Attached Market Research Insights Context:</h5>
+                            <p>{item.researchInsights}</p>
                           </div>
                         )}
-                        <button
-                          className="btn-repost-now"
-                          onClick={() => handleRepost(item)}
-                          disabled={isRepostLoading || selectedAccounts.length === 0}>
-                          {isRepostLoading
-                            ? <><Loader size={14} className="spin" /> Posting...</>
-                            : <><Send size={14} /> Post Now</>}
-                        </button>
-                        {thisRepostResults.length > 0 && (
-                          <div className="repost-results">
-                            {thisRepostResults.map((r, i) => (
-                              <div key={i} className={`repost-result ${r.success ? 'success' : 'error'}`}>
-                                {r.success ? '✅' : '❌'} {r.platform} — {r.accountName}
-                                {!r.success && r.error && <span className="repost-error-msg"> : {r.error}</span>}
+
+                        <div className="drawer-content-split-grid">
+                          
+                          {/* Text/Platform Management Panels */}
+                          <div className="drawer-text-blocks-section">
+                            {parsedPayload ? (
+                              <div className="parsed-platforms-outputs-stack">
+                                {PLATFORMS.map(p => {
+                                  const textValue = parsedPayload[p.key];
+                                  if (!textValue) return null;
+                                  
+                                  return (
+                                    <div key={p.key} className="platform-historical-output-block">
+                                      <div className="platform-block-meta-header">
+                                        <span>{p.icon} <strong>{p.label} Copy</strong></span>
+                                        <button 
+                                          className="btn-mini-copy" 
+                                          onClick={() => handleCopyText(textValue, `${item.id}-${p.key}`)}
+                                        >
+                                          {copiedPlatformKey === `${item.id}-${p.key}` ? <CheckCircle size={12} /> : <Copy size={12} />}
+                                          {copiedPlatformKey === `${item.id}-${p.key}` ? 'Copied' : 'Copy Block'}
+                                        </button>
+                                      </div>
+                                      <p className="platform-raw-copytext-render">{textValue}</p>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            ))}
+                            ) : (
+                              <div className="unparsed-historical-output-block">
+                                <div className="platform-block-meta-header">
+                                  <span>📝 <strong>Raw Block Text Output</strong></span>
+                                  <button 
+                                    className="btn-mini-copy" 
+                                    onClick={() => handleCopyText(item.content, item.id)}
+                                  >
+                                    {copiedPlatformKey === item.id ? <CheckCircle size={12} /> : <Copy size={12} />}
+                                    {copiedPlatformKey === item.id ? 'Copied' : 'Copy'}
+                                  </button>
+                                </div>
+                                <p className="platform-raw-copytext-render">{item.content}</p>
+                              </div>
+                            )}
                           </div>
-                        )}
+
+                          {/* Graphical Assets + Quick Repost Execution Panel Controls */}
+                          <div className="drawer-assets-controls-section">
+                            {item.imageUrl && (
+                              <div className="drawer-graphic-media-container">
+                                <h5>Attached Marketing Graphic Asset:</h5>
+                                <div className="media-preview-box-wrapper">
+                                  {item.imageUrl.toLowerCase().includes('.mp4') ? (
+                                    <video src={item.imageUrl} controls className="media-file-asset-render" />
+                                  ) : (
+                                    <img src={item.imageUrl} alt="Historical compilation graphic" className="media-file-asset-render" />
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {connectedAccounts.length > 0 ? (
+                              <div className="drawer-repost-action-panel">
+                                <h5>Republish/Repost Operations Node</h5>
+                                <p className="panel-instructions-label">Select profiles to deploy copies to immediately:</p>
+                                
+                                <div className="panel-channels-checkboxes-list">
+                                  {connectedAccounts.map(account => (
+                                    <label key={account.id} className="checkbox-channel-row-item">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={activeSelections.includes(account.id)}
+                                        onChange={() => toggleAccountSelection(item.id, account.id)}
+                                      />
+                                      <span className="checkbox-custom-platform-icon">
+                                        {PLATFORMS.find(p => p.key === account.platform)?.icon || '🔗'}
+                                      </span>
+                                      <span className="checkbox-channel-display-identity">
+                                        {account.platform.toUpperCase()} — {account.accountName}
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
+
+                                <button 
+                                  className="btn-execute-repost-now"
+                                  onClick={() => handleRepostExecution(item)}
+                                  disabled={isCurrentlyPosting || activeSelections.length === 0}
+                                >
+                                  {isCurrentlyPosting ? (
+                                    <><Loader size={14} className="spin" /> <span>Deploying posts...</span></>
+                                  ) : (
+                                    <><Send size={14} /> <span>Repost Selected Channels</span></>
+                                  )}
+                                </button>
+
+                                {itemPostOutcomes.length > 0 && (
+                                  <div className="panel-execution-outcomes-report-card">
+                                    {itemPostOutcomes.map((res, index) => (
+                                      <div key={index} className={`outcomes-report-row outcomes-report-row--${res.success ? 'success' : 'error'}`}>
+                                        <span>{res.success ? '✅' : '❌'} <strong>{res.platform.toUpperCase()}</strong> ({res.accountName})</span>
+                                        {!res.success && res.error && <p className="outcome-row-error-print">Error: {res.error}</p>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="drawer-repost-missing-channels-hint">
+                                <AlertCircle size={16} />
+                                <p>No linked channels found. Link your accounts in the <a href="/accounts">Social Accounts Panel</a> to toggle live background repost hooks.</p>
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
                       </div>
                     )}
 

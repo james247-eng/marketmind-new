@@ -1,24 +1,8 @@
 // netlify/functions/post-to-platform.js
-// Handles posting content to all social media platforms.
-// All outbound API calls live here — never in the browser — to avoid CORS
-// blocks and to keep access tokens off the client.
-//
-// Request body:
-// {
-//   platform:    'facebook' | 'instagram' | 'twitter' | 'tiktok' | 'youtube',
-//   accessToken: string,
-//   content:     string,        // text content
-//   mediaUrl:    string | null, // Cloudinary URL if media attached
-//   // platform-specific extras:
-//   pageId:      string,        // facebook
-//   accountId:   string,        // instagram
-//   title:       string,        // youtube
-//   description: string,        // youtube
-// }
+// Handles posting content to all social media platforms uniformly.
+// All outbound API calls live safely here on the server side to protect secrets.
 
-const https = require('https');
-
-// ─── CORS headers ─────────────────────────────────────────────────────────────
+const axios = require('axios');
 
 const CORS = {
   'Access-Control-Allow-Origin':  process.env.ALLOWED_ORIGIN || 'https://marketmind-02.netlify.app',
@@ -27,227 +11,144 @@ const CORS = {
   'Content-Type':                 'application/json',
 };
 
-// ─── Generic HTTPS helper ─────────────────────────────────────────────────────
+// ─── Platform Distribution Handlers ──────────────────────────────────────────
 
-const request = (options, body = null) => new Promise((resolve, reject) => {
-  const req = https.request(options, (res) => {
-    let data = '';
-    res.on('data', chunk => { data += chunk; });
-    res.on('end', () => {
-      try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-      catch { resolve({ status: res.statusCode, body: data }); }
-    });
-  });
-  req.on('error', reject);
-  if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
-  req.end();
-});
-
-// ─── Platform handlers ────────────────────────────────────────────────────────
-
-// FACEBOOK
-// Posts text (+ optional image) to a Facebook Page.
 async function postToFacebook({ pageId, accessToken, content, mediaUrl }) {
-  if (!pageId)      throw new Error('pageId is required for Facebook posting');
-  if (!accessToken) throw new Error('accessToken is required');
+  if (!pageId) throw new Error('pageId target field parameter is required for Facebook Pages API distribution pathing');
+  if (!accessToken) throw new Error('Valid permanent Page accessToken is required');
 
-  const body = {
-    message:      content,
-    access_token: accessToken,
-  };
+  const endpointUrl = mediaUrl 
+    ? `https://graph.facebook.com/v18.0/${pageId}/photos` 
+    : `https://graph.facebook.com/v18.0/${pageId}/feed`;
 
-  // If image URL provided, use /photos endpoint instead of /feed
-  const endpoint = mediaUrl
-    ? `/${pageId}/photos`
-    : `/${pageId}/feed`;
+  const payload = mediaUrl 
+    ? { message: content, url: mediaUrl } 
+    : { message: content };
 
-  if (mediaUrl) body.url = mediaUrl;
-
-  const postBody = new URLSearchParams(body).toString();
-
-  const res = await request({
-    hostname: 'graph.facebook.com',
-    path:     `/v18.0${endpoint}`,
-    method:   'POST',
-    headers:  {
-      'Content-Type':   'application/x-www-form-urlencoded',
-      'Content-Length': Buffer.byteLength(postBody),
-    },
-  }, postBody);
-
-  if (res.body.error) throw new Error(res.body.error.message);
+  const res = await axios.post(endpointUrl, payload, {
+    params: { access_token: accessToken }
+  });
 
   return {
     success: true,
-    postId:  res.body.id || res.body.post_id,
+    postId: res.data.id || res.data.post_id,
   };
 }
 
-// INSTAGRAM
-// Two-step: create media container → publish it.
-// Requires a Cloudinary (or any public) image URL.
 async function postToInstagram({ accountId, accessToken, content, mediaUrl }) {
-  if (!accountId)   throw new Error('accountId is required for Instagram posting');
-  if (!mediaUrl)    throw new Error('Instagram requires an image URL');
-  if (!accessToken) throw new Error('accessToken is required');
+  if (!accountId) throw new Error('Instagram unique accountId identifier string is required');
+  if (!mediaUrl) throw new Error('Instagram Business API endpoints strictly require a public media asset URL link resource container');
+  if (!accessToken) throw new Error('Active Graph API connection accessToken is required');
 
-  // Step 1: Create media container
-  const containerBody = new URLSearchParams({
-    image_url:    mediaUrl,
-    caption:      content,
-    access_token: accessToken,
-  }).toString();
+  // Step 1: Initialize container configuration pipeline block creation
+  const containerRes = await axios.post(`https://graph.facebook.com/v18.0/${accountId}/media`, {
+    image_url: mediaUrl,
+    caption: content,
+  }, {
+    params: { access_token: accessToken }
+  });
 
-  const containerRes = await request({
-    hostname: 'graph.facebook.com',
-    path:     `/v18.0/${accountId}/media`,
-    method:   'POST',
-    headers:  {
-      'Content-Type':   'application/x-www-form-urlencoded',
-      'Content-Length': Buffer.byteLength(containerBody),
-    },
-  }, containerBody);
+  const creationId = containerRes.data.id;
+  if (!creationId) throw new Error('Failed to accurately retrieve Instagram operational media creation ID container context reference');
 
-  if (containerRes.body.error) throw new Error(containerRes.body.error.message);
-  const creationId = containerRes.body.id;
-
-  // Step 2: Publish the container
-  const publishBody = new URLSearchParams({
-    creation_id:  creationId,
-    access_token: accessToken,
-  }).toString();
-
-  const publishRes = await request({
-    hostname: 'graph.facebook.com',
-    path:     `/v18.0/${accountId}/media_publish`,
-    method:   'POST',
-    headers:  {
-      'Content-Type':   'application/x-www-form-urlencoded',
-      'Content-Length': Buffer.byteLength(publishBody),
-    },
-  }, publishBody);
-
-  if (publishRes.body.error) throw new Error(publishRes.body.error.message);
+  // Step 2: Formally issue the container publish command hook parameters
+  const publishRes = await axios.post(`https://graph.facebook.com/v18.0/${accountId}/media_publish`, {
+    creation_id: creationId,
+  }, {
+    params: { access_token: accessToken }
+  });
 
   return {
     success: true,
-    postId:  publishRes.body.id,
+    postId: publishRes.data.id,
   };
 }
 
-// TWITTER / X
-// Posts a tweet. Media upload via URL is not directly supported by Twitter v2 —
-// the accessToken must be a user OAuth2 token with tweet.write scope.
 async function postToTwitter({ accessToken, content }) {
-  if (!accessToken) throw new Error('accessToken is required');
+  if (!accessToken) throw new Error('Authorized user scoped bearer token is required to dispatch tweet properties');
 
-  const tweetBody = JSON.stringify({ text: content });
+  const res = await axios.post('https://api.twitter.com/2/tweets', {
+    text: content
+  }, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
 
-  const res = await request({
-    hostname: 'api.twitter.com',
-    path:     '/2/tweets',
-    method:   'POST',
-    headers:  {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type':  'application/json',
-      'Content-Length': Buffer.byteLength(tweetBody),
-    },
-  }, tweetBody);
-
-  if (res.body.errors?.length) throw new Error(res.body.errors[0].message);
-  if (!res.body.data?.id)      throw new Error('Twitter did not return a tweet ID');
+  if (!res.data?.data?.id) throw new Error('Twitter/X API pipeline execution node did not correctly return a post-publish Tweet identifier');
 
   return {
     success: true,
-    postId:  res.body.data.id,
+    postId: res.data.data.id,
   };
 }
 
-// TIKTOK
-// Initialises a video upload using TikTok v2 API.
-// Requires a valid Cloudinary video URL.
 async function postToTikTok({ accessToken, content, mediaUrl }) {
-  if (!accessToken) throw new Error('accessToken is required');
-  if (!mediaUrl)    throw new Error('TikTok requires a video URL');
+  if (!accessToken) throw new Error('TikTok endpoint access authorization header token is missing');
+  if (!mediaUrl) throw new Error('TikTok video distribution target channels requires a media source target string location pointer');
 
-  const body = JSON.stringify({
+  const res = await axios.post('https://open.tiktokapis.com/v2/post/publish/video/init/', {
     post_info: {
-      title:                    content.slice(0, 150), // TikTok title limit
-      privacy_level:            'PUBLIC_TO_EVERYONE',
-      disable_duet:             false,
-      disable_comment:          false,
-      disable_stitch:           false,
+      title: content.slice(0, 150),
+      privacy_level: 'PUBLIC_TO_EVERYONE',
+      disable_duet: false,
+      disable_comment: false,
+      disable_stitch: false,
       video_cover_timestamp_ms: 1000,
     },
     source_info: {
-      source:    'PULL_FROM_URL',
+      source: 'PULL_FROM_URL',
       video_url: mediaUrl,
     },
+  }, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=UTF-8'
+    }
   });
 
-  const res = await request({
-    hostname: 'open.tiktokapis.com',
-    path:     '/v2/post/publish/video/init/',
-    method:   'POST',
-    headers:  {
-      'Authorization':  `Bearer ${accessToken}`,
-      'Content-Type':   'application/json; charset=UTF-8',
-      'Content-Length': Buffer.byteLength(body),
-    },
-  }, body);
-
-  if (res.body.error?.code && res.body.error.code !== 'ok') {
-    throw new Error(res.body.error.message || 'TikTok API error');
+  if (res.data?.error?.code && res.data.error.code !== 'ok') {
+    throw new Error(res.data.error.message || 'TikTok publishing initialization rejected');
   }
 
   return {
-    success:   true,
-    postId:    res.body.data?.publish_id,
+    success: true,
+    postId: res.data.data?.publish_id,
   };
 }
 
-// YOUTUBE
-// Inserts a video using the YouTube Data API v3.
-// NOTE: This sends metadata only. Actual video bytes must be uploaded separately
-// via resumable upload — this creates the video shell with a Cloudinary source URL.
 async function postToYouTube({ accessToken, content, mediaUrl, title, description }) {
-  if (!accessToken) throw new Error('accessToken is required');
-  if (!mediaUrl)    throw new Error('YouTube requires a video URL');
+  if (!accessToken) throw new Error('Google OAuth credentials required to initialize streaming metadata inserts');
+  if (!mediaUrl) throw new Error('YouTube payload schema requires a video storage media target location pointer');
 
-  const body = JSON.stringify({
+  const res = await axios.post('https://www.googleapis.com/youtube/v3/videos?part=snippet,status', {
     snippet: {
-      title:       title       || content.slice(0, 100),
+      title: title || content.slice(0, 100),
       description: description || content,
-      categoryId:  '22', // People & Blogs
+      categoryId: '22',
     },
     status: {
       privacyStatus: 'public',
     },
+  }, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
   });
 
-  const res = await request({
-    hostname: 'www.googleapis.com',
-    path:     '/youtube/v3/videos?part=snippet,status',
-    method:   'POST',
-    headers:  {
-      'Authorization':  `Bearer ${accessToken}`,
-      'Content-Type':   'application/json',
-      'Content-Length': Buffer.byteLength(body),
-    },
-  }, body);
-
-  if (res.body.error) throw new Error(res.body.error.message);
-  if (!res.body.id)   throw new Error('YouTube did not return a video ID');
+  if (!res.data?.id) throw new Error('YouTube core pipeline did not accurately establish a valid structural content shell video resource id');
 
   return {
     success: true,
-    postId:  res.body.id,
+    postId: res.data.id,
   };
 }
 
-// ─── Platform router ──────────────────────────────────────────────────────────
+// ─── Platform Distribution Router Matrix ─────────────────────────────────────
 
-const PLATFORM_HANDLERS = {
+const PLATFORM_ROUTER = {
   facebook:  postToFacebook,
   instagram: postToInstagram,
   twitter:   postToTwitter,
@@ -255,7 +156,7 @@ const PLATFORM_HANDLERS = {
   youtube:   postToYouTube,
 };
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
+// ─── Main Orchestrator Lambda Handler ────────────────────────────────────────
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
@@ -266,7 +167,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 405,
       headers: CORS,
-      body: JSON.stringify({ error: 'Method not allowed' }),
+      body: JSON.stringify({ error: 'Target operational dispatch endpoint method option not supported' }),
     };
   }
 
@@ -278,33 +179,40 @@ exports.handler = async (event) => {
       return {
         statusCode: 400,
         headers: CORS,
-        body: JSON.stringify({ error: 'Missing required field: platform' }),
+        body: JSON.stringify({ error: 'Missing mandatory tracking parameter property flag field: platform' }),
       };
     }
 
-    const handler = PLATFORM_HANDLERS[platform];
-    if (!handler) {
+    const platformHandler = PLATFORM_ROUTER[platform];
+    if (!platformHandler) {
       return {
         statusCode: 400,
         headers: CORS,
-        body: JSON.stringify({ error: `Unsupported platform: ${platform}` }),
+        body: JSON.stringify({ error: `Selected social channel context execution path driver not mapped: ${platform}` }),
       };
     }
 
-    const result = await handler(payload);
+    // Execute target micro-handler pipeline mapping block logic loop safely
+    const executionOutcome = await platformHandler(payload);
 
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ success: true, ...result }),
+      body: JSON.stringify({ success: true, ...executionOutcome }),
     };
 
   } catch (error) {
-    console.error('post-to-platform error:', error.message);
+    console.error('[post-to-platform] Pipeline crash processing action:', error.response?.data || error.message);
+    
+    // Deconstruct safe unified nested downstream tracking objects elegantly
+    const errorBodyPayload = error.response?.data?.error?.message 
+      || error.response?.data?.error 
+      || error.message;
+
     return {
       statusCode: 500,
       headers: CORS,
-      body: JSON.stringify({ success: false, error: error.message }),
+      body: JSON.stringify({ success: false, error: errorBodyPayload }),
     };
   }
 };
