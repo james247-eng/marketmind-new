@@ -3,6 +3,13 @@
 // Keeps client-facing authentication modular and clear.
 
 const axios = require('axios');
+const admin = require('firebase-admin');
+const { encryptToken } = require('./lib/tokenEncryption');
+
+if (!admin.apps.length) {
+  admin.initializeApp({ credential: admin.credential.applicationDefault() });
+}
+const db = admin.firestore();
 
 const CORS = {
   'Access-Control-Allow-Origin':  process.env.ALLOWED_ORIGIN || 'https://marketmind-02.netlify.app',
@@ -267,13 +274,17 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { platform, code, redirectUri, userId } = JSON.parse(event.body);
+    const authHeader = event.headers?.authorization || event.headers?.Authorization || '';
+    const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!idToken) throw new Error('Missing Firebase ID token');
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    const { platform, code, redirectUri } = JSON.parse(event.body);
 
-    if (!platform || !code || !redirectUri || !userId) {
+    if (!platform || !code || !redirectUri) {
       return {
         statusCode: 400,
         headers: CORS,
-        body: JSON.stringify({ error: 'Missing mandatory payload request parameters: platform, code, redirectUri, userId' }),
+        body: JSON.stringify({ error: 'Missing mandatory payload request parameters: platform, code, redirectUri' }),
       };
     }
 
@@ -312,10 +323,24 @@ exports.handler = async (event) => {
         throw new Error(`Execution adapter for target platform routing not mapped out internally: ${platform}`);
     }
 
+    const accounts = exchangeResult.accounts || [exchangeResult];
+    const metadata = [];
+    for (const account of accounts) {
+      await db.collection('accounts').add({
+        userId: decoded.uid,
+        platform: exchangeResult.platform || platform,
+        accountId: account.accountId,
+        accountName: account.accountName,
+        accessToken: encryptToken(account.accessToken),
+        refreshToken: encryptToken(account.refreshToken),
+        connectedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      metadata.push({ accountId: account.accountId, accountName: account.accountName, platform: exchangeResult.platform || platform });
+    }
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ success: true, ...exchangeResult }),
+      body: JSON.stringify({ success: true, platform: exchangeResult.platform || platform, accounts: metadata }),
     };
 
   } catch (error) {
