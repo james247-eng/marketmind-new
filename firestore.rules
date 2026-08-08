@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function canAccessWorkspace(workspaceId) {
+      return signedIn() && (
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.userId == request.auth.uid ||
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
+      );
+    }
+
+    match /users/{userId} {
+      allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /workspaces/{workspaceId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if canAccessWorkspace(workspaceId);
+
+      match /{subcollection}/{document=**} {
+        allow read, write: if canAccessWorkspace(workspaceId);
+      }
+    }
+
+    match /organizations/{organizationId} { allow read, write: if false; }
+    match /auditLogs/{logId} { allow read, write: if false; }
+  }
+}
