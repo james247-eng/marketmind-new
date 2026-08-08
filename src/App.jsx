@@ -11,13 +11,13 @@ import OAuthCallback from './components/OAuthCallback';
 
 // Dashboard Pages
 import Dashboard from './features/dashboard/Dashboard';
-import BusinessList from './features/business/BusinessList';
-import CreateBusiness from './features/business/CreateBusiness';
-import EditBusiness from './features/business/EditBusiness';
+import WorkspaceList from './features/workspaces/WorkspaceList';
+import CreateWorkspace from './features/workspaces/CreateWorkspace';
+import EditWorkspace from './features/workspaces/EditWorkspace';
 import ContentGenerator from './features/content/ContentGenerator';
 import ContentHistory from './features/content/ContentHistory';
-import PostScheduler from './features/scheduling/PostScheduler';
-import SocialAccounts from './features/social/SocialAccounts';
+import PostScheduler from './features/calendar/PostScheduler';
+import SocialAccounts from './features/social-connections/SocialAccounts';
 import Settings from './features/settings/Settings';
 
 // Public Pages
@@ -65,7 +65,7 @@ function App() {
             path="/businesses" 
             element={
               <ProtectedRoute>
-                <BusinessList />
+                <WorkspaceList />
               </ProtectedRoute>
             } 
           />
@@ -74,7 +74,7 @@ function App() {
             path="/businesses/create" 
             element={
               <ProtectedRoute>
-                <CreateBusiness />
+                <CreateWorkspace />
               </ProtectedRoute>
             } 
           />
@@ -83,7 +83,7 @@ function App() {
             path="/businesses/:id/edit" 
             element={
               <ProtectedRoute>
-                <EditBusiness />
+                <EditWorkspace />
               </ProtectedRoute>
             } 
           />

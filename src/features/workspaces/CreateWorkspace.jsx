@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { Building2, AlertCircle } from 'lucide-react';
-import './CreateBusiness.css';
+import './CreateWorkspace.css';
 import COLLECTIONS from '../../lib/schema.js';
 
 function CreateBusiness() {

@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { Plus, Building2, Globe, MapPin } from 'lucide-react';
-import './BusinessList.css';
+import './WorkspaceList.css';
 
 function BusinessList() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
