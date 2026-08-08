@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { logOut } from '../../services/authService.js';
 import { useNavigate } from 'react-router-dom';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { db, auth } from '../../services/firebase.js';
 import Sidebar from '../../components/Sidebar.jsx';
@@ -24,6 +24,7 @@ import {
   Loader,
 } from 'lucide-react';
 import './Settings.css';
+import COLLECTIONS from '../../lib/schema.js';
 
 // Matches TIERS in functions/index.js
 const TIER_LIMITS = {
@@ -75,14 +76,15 @@ function Settings() {
       setUsageLoading(true);
       try {
         // Get subscription tier from users collection
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const userSnap = await getDoc(doc(db, COLLECTIONS.users, currentUser.uid));
         if (userSnap.exists()) {
           setSubscriptionTier(userSnap.data().subscriptionTier || 'free');
         }
 
         // Get usage counters
-        const usageSnap = await getDoc(doc(db, 'usage', currentUser.uid));
-        if (usageSnap.exists()) {
+        const workspaces = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid)));
+        const usageSnap = workspaces.empty ? null : await getDoc(doc(db, COLLECTIONS.usageCounters(workspaces.docs[0].id), currentUser.uid));
+        if (usageSnap?.exists()) {
           const data = usageSnap.data();
           setUsage({
             postsThisMonth:    data.postsThisMonth    || 0,

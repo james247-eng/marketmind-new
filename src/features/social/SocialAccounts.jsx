@@ -52,6 +52,7 @@ function SocialAccounts() {
   const [error, setError]                     = useState('');
   const [success, setSuccess]                 = useState('');
   const [workspaceId, setWorkspaceId]         = useState('');
+  const [workspaces, setWorkspaces]           = useState([]);
   
   // Guard reference to prevent race conditions during OAuth callback processing mounts
   const callbackProcessed = useRef(false);
@@ -134,7 +135,9 @@ function SocialAccounts() {
     if (!currentUser) return;
     (async () => {
       const snap = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid)));
-      if (snap.size === 1) setWorkspaceId(snap.docs[0].id);
+      const list = snap.docs.map((item) => ({ id: item.id, ...item.data() }));
+      setWorkspaces(list);
+      if (list.length) setWorkspaceId(list[0].id);
     })();
   }, [currentUser]);
 
@@ -176,7 +179,7 @@ function SocialAccounts() {
     if (!confirm(`Disconnect your ${platformName} account?`)) return;
 
     try {
-      const result = await disconnectAccount(accountId);
+      const result = await disconnectAccount(workspaceId, accountId);
       if (result && result.success) {
         setSuccess(`${platformName} account disconnected.`);
         await fetchAccounts();
@@ -212,6 +215,11 @@ function SocialAccounts() {
               <p>Connect your social media platforms to start posting</p>
             </div>
           </div>
+          {workspaces.length > 1 && (
+            <select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}>
+              {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+            </select>
+          )}
 
           {error && (
             <div className="alert alert-error" role="alert">
