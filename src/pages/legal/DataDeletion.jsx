@@ -2,9 +2,9 @@
 // Facebook API requirement - Data deletion callback page
 
 import { useState } from 'react';
-import SEO from '../components/SEO';
-import Navbar from '../components/landing/Navbar';
-import Footer from '../components/landing/Footer';
+import SEO from '../../components/SEO';
+import Navbar from '../../components/landing/Navbar';
+import Footer from '../../components/landing/Footer';
 import { Trash2, AlertCircle, CheckCircle2, Shield } from 'lucide-react';
 import './DataDeletion.css';
 

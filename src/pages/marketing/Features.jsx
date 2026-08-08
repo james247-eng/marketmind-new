@@ -3,9 +3,9 @@
 
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import SEO from '../components/SEO';
-import Navbar from '../components/landing/Navbar';
-import Footer from '../components/landing/Footer';
+import SEO from '../../components/SEO';
+import Navbar from '../../components/landing/Navbar';
+import Footer from '../../components/landing/Footer';
 import { 
   Sparkles, 
   Calendar, 

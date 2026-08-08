@@ -1,9 +1,9 @@
 // Terms.jsx
 // Terms policy page - SEO optimized
 
-import SEO from '../components/SEO';
-import Navbar from '../components/landing/Navbar';
-import Footer from '../components/landing/Footer';
+import SEO from '../../components/SEO';
+import Navbar from '../../components/landing/Navbar';
+import Footer from '../../components/landing/Footer';
 import { Shield } from 'lucide-react';
 import './Legal.css';
 

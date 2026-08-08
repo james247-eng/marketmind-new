@@ -21,13 +21,13 @@ import SocialAccounts from './features/social-connections/SocialAccounts';
 import Settings from './features/settings/Settings';
 
 // Public Pages
-import LandingPage from './pages/LandingPage';
-import FeaturesPage from './pages/Features';
-import PricingPage from './pages/Pricing';
-import BlogPage from './pages/Blog';
-import PrivacyPage from './pages/Privacy';
-import TermsPage from './pages/Terms';
-import DataDeletion from './pages/DataDeletion';
+import LandingPage from './pages/marketing/LandingPage';
+import FeaturesPage from './pages/marketing/Features';
+import PricingPage from './pages/marketing/Pricing';
+import BlogPage from './pages/marketing/Blog';
+import PrivacyPage from './pages/legal/Privacy';
+import TermsPage from './pages/legal/Terms';
+import DataDeletion from './pages/legal/DataDeletion';
 import './App.css';
 
 function App() {
