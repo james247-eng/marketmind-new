@@ -173,6 +173,9 @@ exports.handler = async (event) => {
 
   try {
     const payload = JSON.parse(event.body);
+    if (Object.prototype.hasOwnProperty.call(payload, 'accessToken') || Object.prototype.hasOwnProperty.call(payload, 'refreshToken')) {
+      return { statusCode: 400, headers: CORS, body: JSON.stringify({ success: false, error: 'Raw social tokens are not accepted' }) };
+    }
     const { platform } = payload;
 
     if (!platform) {
