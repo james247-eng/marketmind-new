@@ -137,7 +137,8 @@ function SocialAccounts() {
       const snap = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid)));
       const list = snap.docs.map((item) => ({ id: item.id, ...item.data() }));
       setWorkspaces(list);
-      if (list.length) setWorkspaceId(list[0].id);
+      const pendingWorkspace = sessionStorage.getItem('marketmind.oauthWorkspaceId');
+      if (list.length) setWorkspaceId(list.some((item) => item.id === pendingWorkspace) ? pendingWorkspace : list[0].id);
     })();
   }, [currentUser]);
 
@@ -155,6 +156,8 @@ function SocialAccounts() {
   const handleConnect = (platformId) => {
     setError('');
     setSuccess('');
+    if (!workspaceId) { setError('Select a workspace before connecting an account.'); return; }
+    sessionStorage.setItem('marketmind.oauthWorkspaceId', workspaceId);
 
     switch (platformId) {
       case 'facebook':
