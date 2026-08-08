@@ -4,6 +4,14 @@
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase.js';
 import { deleteUser } from 'firebase/auth';
+import COLLECTIONS from '../lib/schema.js';
+
+const SUBCOLLECTIONS = ['socialConnections', 'contentItems', 'publishingJobs', 'usageCounters', 'assets', 'campaigns', 'leads', 'emailContacts', 'emailCampaigns', 'assistantThreads', 'members'];
+
+async function clearPath(path) {
+  const snapshot = await getDocs(collection(db, path));
+  for (const item of snapshot.docs) await deleteDoc(item.ref);
+}
 
 // Request data deletion (call from frontend)
 export const requestDataDeletion = async (email, facebookUserId = null) => {
@@ -49,10 +57,13 @@ export const requestDataDeletion = async (email, facebookUserId = null) => {
 // Process data deletion (backend only)
 export const processDataDeletion = async (userId) => {
   try {
-    // Delete user data from Firestore
-    const collections = ['businesses', 'content', 'scheduledPosts', 'socialAccounts'];
-    
-    for (const collectionName of collections) {
+    const workspaces = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', userId)));
+    for (const workspace of workspaces.docs) {
+      for (const name of SUBCOLLECTIONS) await clearPath(COLLECTIONS[name](workspace.id));
+      await deleteDoc(workspace.ref);
+    }
+
+    for (const collectionName of ['businesses', 'accounts', 'socialAccounts', 'content', 'scheduledPosts', 'usage']) {
       const q = query(
         collection(db, collectionName),
         where('userId', '==', userId)
@@ -66,7 +77,7 @@ export const processDataDeletion = async (userId) => {
     }
 
     // Delete user account
-    await deleteDoc(doc(db, 'users', userId));
+    await deleteDoc(doc(db, COLLECTIONS.users, userId));
 
     return { success: true };
   } catch (error) {
