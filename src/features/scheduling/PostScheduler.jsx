@@ -12,6 +12,7 @@ import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { Calendar, Clock, Send, X, AlertCircle, CheckCircle } from 'lucide-react';
 import './PostScheduler.css';
+import COLLECTIONS from '../../lib/schema.js';
 
 // Helper to show a readable label for saved content in the dropdown
 const contentLabel = (item) => {
@@ -53,7 +54,7 @@ function PostScheduler() {
     // Businesses
     (async () => {
       try {
-        const q = query(collection(db, 'businesses'), where('userId', '==', currentUser.uid));
+        const q = query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid));
         const snap = await getDocs(q);
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setBusinesses(list);
@@ -61,11 +62,6 @@ function PostScheduler() {
       } catch (err) { console.error('Error loading businesses:', err); }
     })();
 
-    // Connected social accounts
-    (async () => {
-      const result = await getConnectedAccounts(currentUser.uid);
-      if (result.success) setConnectedAccounts(result.accounts);
-    })();
   }, [currentUser]);
 
   // ─── Load content + scheduled posts when business changes ───────────────────
@@ -75,6 +71,8 @@ function PostScheduler() {
 
     // Pass userId so Firestore rules are satisfied
     (async () => {
+      const accountsResult = await getConnectedAccounts(currentUser.uid, selectedBusiness);
+      if (accountsResult.success) setConnectedAccounts(accountsResult.accounts);
       const result = await getContentHistory(selectedBusiness, currentUser.uid);
       if (result.success) setSavedContent(result.content);
       else console.error('Error loading content:', result.error);
@@ -120,12 +118,8 @@ function PostScheduler() {
         contentId:     scheduleForm.contentId,
         content:       content.content,
         imageUrl:      content.imageUrl || null,
-        platforms:     selectedAccounts.map(a => ({
-          platform:    a.platform,
-          accountId:   a.accountId,
-          accountName: a.accountName,
-          accessToken: a.accessToken,   // required by execute-scheduled-posts
-        })),
+        workspaceId:   selectedBusiness,
+        platforms:     Object.fromEntries(selectedAccounts.map(a => [a.platform, content.content || ''])),
         scheduledTime: scheduledDateTime.toISOString(),
       });
 
@@ -149,7 +143,7 @@ function PostScheduler() {
 
   const handleCancelPost = async (postId) => {
     if (!confirm('Cancel this scheduled post?')) return;
-    const result = await cancelScheduledPost(postId);
+    const result = await cancelScheduledPost(selectedBusiness, postId);
     if (result.success) {
       setSuccess('Post cancelled.');
       setUpcomingPosts(prev => prev.map(p => p.id === postId ? { ...p, status: 'cancelled' } : p));

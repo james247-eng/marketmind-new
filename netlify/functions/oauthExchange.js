@@ -5,6 +5,7 @@
 const axios = require('axios');
 const admin = require('firebase-admin');
 const { encryptToken } = require('./lib/tokenEncryption');
+const COLLECTIONS = require('./lib/schema.cjs');
 
 if (!admin.apps.length) {
   admin.initializeApp({ credential: admin.credential.applicationDefault() });
@@ -278,9 +279,9 @@ exports.handler = async (event) => {
     const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (!idToken) throw new Error('Missing Firebase ID token');
     const decoded = await admin.auth().verifyIdToken(idToken);
-    const { platform, code, redirectUri } = JSON.parse(event.body);
+    const { platform, code, redirectUri, workspaceId } = JSON.parse(event.body);
 
-    if (!platform || !code || !redirectUri) {
+    if (!platform || !code || !redirectUri || !workspaceId) {
       return {
         statusCode: 400,
         headers: CORS,
@@ -326,7 +327,8 @@ exports.handler = async (event) => {
     const accounts = exchangeResult.accounts || [exchangeResult];
     const metadata = [];
     for (const account of accounts) {
-      await db.collection('accounts').add({
+      await db.collection(COLLECTIONS.socialConnections(workspaceId)).add({
+        workspaceId,
         userId: decoded.uid,
         platform: exchangeResult.platform || platform,
         accountId: account.accountId,

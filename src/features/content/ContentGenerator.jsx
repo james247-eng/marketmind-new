@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
+import COLLECTIONS from '../../lib/schema.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { generateContent, conductResearch } from '../../services/aiService.js';
 import { uploadFile, validateFile } from '../../services/storageService.js';
@@ -145,7 +146,7 @@ function ContentGenerator() {
     // Fetch businesses
     (async () => {
       try {
-        const q = query(collection(db, 'businesses'), where('userId', '==', currentUser.uid));
+        const q = query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid));
         const snap = await getDocs(q);
         if (!isMounted.current) return;
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -156,21 +157,17 @@ function ContentGenerator() {
       }
     })();
 
-    // Fetch connected social accounts
-    (async () => {
-      try {
-        const result = await getConnectedAccounts(currentUser.uid);
-        if (!isMounted.current) return;
-        if (result && result.success) setConnectedAccounts(result.accounts || []);
-      } catch (err) { 
-        console.error('Error fetching accounts:', err); 
-      }
-    })();
-
     return () => {
       isMounted.current = false;
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !formData.businessId) return;
+    getConnectedAccounts(currentUser.uid, formData.businessId).then((result) => {
+      if (result?.success) setConnectedAccounts(result.accounts || []);
+    }).catch((err) => console.error('Error fetching accounts:', err));
+  }, [currentUser, formData.businessId]);
 
   const handleChange   = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
   const handleCheckbox = (e) => setFormData({ ...formData, [e.target.name]: e.target.checked });
@@ -269,13 +266,14 @@ function ContentGenerator() {
       const recentPostExamples = await fetchRecentPosts();
 
       if (formData.includeResearch) {
-        const research = await conductResearch(formData.prompt, biz.niche);
+        const research = await conductResearch(formData.businessId, formData.prompt, biz.niche);
         if (research && research.success && isMounted.current) {
           setResearchInsights(research.insights || '');
         }
       }
 
       const result = await generateContent(
+        formData.businessId,
         formData.prompt,
         formData.tone,
         businessContext,

@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const { decryptToken } = require('./lib/tokenEncryption');
 const { publishToPlatform } = require('./lib/platformAdapters');
+const COLLECTIONS = require('./lib/schema.cjs');
 
 if (!admin.apps.length) {
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -11,15 +12,16 @@ const firestore = admin.firestore();
 exports.handler = async () => {
   try {
     const nowIso = new Date().toISOString();
-    const snapshot = await firestore.collection('scheduledPosts').where('status', '==', 'pending').where('scheduledTime', '<=', nowIso).get();
+    const snapshot = await firestore.collectionGroup('publishingJobs').where('status', '==', 'scheduled').where('scheduledTime', '<=', nowIso).get();
     if (snapshot.empty) return { statusCode: 200, body: JSON.stringify({ ran: true, processed: 0, results: [] }) };
 
     const results = [];
     for (const document of snapshot.docs) {
       const postId = document.id;
       const post = document.data();
+      const workspaceId = document.ref.parent.parent.id;
       await document.ref.update({ status: 'processing', updatedAt: new Date().toISOString() });
-      const accountsSnapshot = await firestore.collection('accounts').where('userId', '==', post.userId).get();
+      const accountsSnapshot = await firestore.collection(COLLECTIONS.socialConnections(workspaceId)).where('userId', '==', post.userId).get();
       const accounts = {};
       accountsSnapshot.forEach((accountDoc) => { const account = accountDoc.data(); accounts[account.platform] = account; });
 
@@ -38,7 +40,7 @@ exports.handler = async () => {
       const successes = platformResults.filter((result) => result.success).length;
       const status = successes === platformResults.length ? 'published' : successes ? 'partial' : 'failed';
       await document.ref.update({ status, publishResults: platformResults, publishedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      if (post.contentId) await firestore.collection('content').doc(post.contentId).update({ status: status === 'published' ? 'published' : 'draft', updatedAt: new Date().toISOString() });
+      if (post.contentId) await firestore.collection(COLLECTIONS.contentItems(workspaceId)).doc(post.contentId).update({ status: status === 'published' ? 'published' : 'draft', updatedAt: new Date().toISOString() });
       results.push({ postId, status, platforms: platformResults });
     }
     return { statusCode: 200, body: JSON.stringify({ ran: true, processed: results.length, results }) };

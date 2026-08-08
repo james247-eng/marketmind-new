@@ -8,6 +8,7 @@ import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, Send, RefreshCw } from 'lucide-react';
 import './ContentHistory.css';
+import COLLECTIONS from '../../lib/schema.js';
 
 const PLATFORMS = [
   { key: 'twitter',   label: 'Twitter/X', icon: '🐦', color: '#1DA1F2' },
@@ -71,7 +72,7 @@ function ContentHistory() {
 
     try {
       // 1. Fetch connected workspaces
-      const bizQuery = query(collection(db, 'businesses'), where('userId', '==', currentUser.uid));
+      const bizQuery = query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid));
       const bizSnapshot = await getDocs(bizQuery);
       const bizList = bizSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setBusinesses(bizList);
@@ -81,7 +82,7 @@ function ContentHistory() {
       }
 
       // 2. Fetch linked social platform distribution channels
-      const accResult = await getConnectedAccounts(currentUser.uid);
+      const accResult = await getConnectedAccounts(currentUser.uid, bizList[0]?.id);
       if (accResult && accResult.success) {
         setConnectedAccounts(accResult.accounts || []);
       }
@@ -100,7 +101,7 @@ function ContentHistory() {
     
     try {
       const historyQuery = query(
-        collection(db, 'content'),
+        collection(db, COLLECTIONS.contentItems(selectedBusinessId)),
         where('userId', '==', currentUser.uid),
         where('businessId', '==', selectedBusinessId),
         orderBy('createdAt', 'desc')
@@ -112,7 +113,7 @@ function ContentHistory() {
       } catch (indexErr) {
         console.warn('Fallback execution triggered. Primary Firestore custom index missing:', indexErr.message);
         const fallbackQuery = query(
-          collection(db, 'content'),
+          collection(db, COLLECTIONS.contentItems(selectedBusinessId)),
           where('userId', '==', currentUser.uid),
           where('businessId', '==', selectedBusinessId)
         );
@@ -166,7 +167,7 @@ function ContentHistory() {
     if (!confirm('Are you sure you want to permanently delete this content log from your historical archives?')) return;
     
     try {
-      await deleteDoc(doc(db, 'content', itemId));
+      await deleteDoc(doc(db, COLLECTIONS.contentItems(selectedBusinessId), itemId));
       setSuccess('Log item permanently cleared from dashboard profile history.');
       setHistoryItems(prev => prev.filter(item => item.id !== itemId));
       if (expandedItemId === itemId) setExpandedItemId(null);

@@ -24,6 +24,7 @@ const admin     = require('firebase-admin');
 
 admin.initializeApp();
 const db = admin.firestore();
+const COLLECTIONS = require('./lib/schema.cjs');
 
 // ==================== SUBSCRIPTION TIERS =====================================
 
@@ -65,7 +66,7 @@ async function getUserSubscription(userId) {
   };
 }
 
-async function checkMonthlyLimit(userId, type) {
+async function checkMonthlyLimit(userId, workspaceId, type) {
   const subscription = await getUserSubscription(userId);
   const tier = TIERS[subscription.tier];
 
@@ -75,7 +76,7 @@ async function checkMonthlyLimit(userId, type) {
   const now        = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const usageRef = db.collection('usage').doc(userId);
+  const usageRef = db.collection(COLLECTIONS.usageCounters(workspaceId)).doc(userId);
   const usageDoc = await usageRef.get();
 
   if (!usageDoc.exists) {
@@ -96,8 +97,8 @@ async function checkMonthlyLimit(userId, type) {
   return currentUsage < limit;
 }
 
-async function incrementUsage(userId, type) {
-  const usageRef = db.collection('usage').doc(userId);
+async function incrementUsage(userId, workspaceId, type) {
+  const usageRef = db.collection(COLLECTIONS.usageCounters(workspaceId)).doc(userId);
   const field    = type === 'post' ? 'postsThisMonth' : 'researchThisMonth';
   await usageRef.update({ [field]: admin.firestore.FieldValue.increment(1) });
 }
@@ -116,14 +117,15 @@ exports.checkUsageLimit = functions.https.onCall(async (data, context) => {
   }
 
   const userId     = context.auth.uid;
-  const { type }   = data; // 'post' | 'research'
+  const { type, workspaceId } = data;
+  if (!workspaceId) throw new functions.https.HttpsError('invalid-argument', 'workspaceId is required');
 
   const subscription = await getUserSubscription(userId);
   const tier         = TIERS[subscription.tier];
-  const canProceed   = await checkMonthlyLimit(userId, type);
+  const canProceed   = await checkMonthlyLimit(userId, workspaceId, type);
 
   // Fetch current counters for display in the UI
-  const usageDoc  = await db.collection('usage').doc(userId).get();
+  const usageDoc  = await db.collection(COLLECTIONS.usageCounters(workspaceId)).doc(userId).get();
   const usage     = usageDoc.exists ? usageDoc.data() : { postsThisMonth: 0, researchThisMonth: 0 };
 
   return {
@@ -151,11 +153,13 @@ exports.recordContentGeneration = functions.https.onCall(async (data, context) =
   }
 
   const userId = context.auth.uid;
-  const { prompt, tone, businessContext, content } = data;
+  const { prompt, tone, businessContext, content, workspaceId } = data;
+  if (!workspaceId) throw new functions.https.HttpsError('invalid-argument', 'workspaceId is required');
 
-  await incrementUsage(userId, 'post');
+  await incrementUsage(userId, workspaceId, 'post');
 
-  await db.collection('content').add({
+  await db.collection(COLLECTIONS.contentItems(workspaceId)).add({
+    workspaceId,
     userId,
     prompt,
     tone,
@@ -180,11 +184,13 @@ exports.recordResearch = functions.https.onCall(async (data, context) => {
   }
 
   const userId = context.auth.uid;
-  const { topic, businessNiche, insights } = data;
+  const { topic, businessNiche, insights, workspaceId } = data;
+  if (!workspaceId) throw new functions.https.HttpsError('invalid-argument', 'workspaceId is required');
 
-  await incrementUsage(userId, 'research');
+  await incrementUsage(userId, workspaceId, 'research');
 
-  await db.collection('content').add({
+  await db.collection(COLLECTIONS.contentItems(workspaceId)).add({
+    workspaceId,
     userId,
     topic,
     businessNiche,
@@ -207,6 +213,8 @@ exports.generateUploadUrl = functions.https.onCall(async (data, context) => {
   }
 
   const userId = context.auth.uid;
+  const { workspaceId } = data;
+  if (!workspaceId) throw new functions.https.HttpsError('invalid-argument', 'workspaceId is required');
 
   try {
     // Validates the user exists and has an active subscription
@@ -217,7 +225,7 @@ exports.generateUploadUrl = functions.https.onCall(async (data, context) => {
       cloudinaryCloudName: process.env.VITE_CLOUDINARY_CLOUD_NAME,
       uploadPreset:        process.env.VITE_CLOUDINARY_UPLOAD_PRESET,
       uploadConfig: {
-        folder: `marketmind/users/${userId}/content`,
+        folder: `marketmind/users/${userId}/workspaces/${workspaceId}/content`,
         tags:   [`user:${userId}`, 'marketplace'],
         eager:  'w_400,h_300,c_pad|w_800,h_600,c_pad',
       },

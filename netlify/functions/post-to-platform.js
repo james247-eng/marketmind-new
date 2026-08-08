@@ -1,6 +1,7 @@
 const admin = require('firebase-admin');
 const { decryptToken } = require('./lib/tokenEncryption');
 const { publishToPlatform } = require('./lib/platformAdapters');
+const COLLECTIONS = require('./lib/schema.cjs');
 
 if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.applicationDefault() });
 const db = admin.firestore();
@@ -22,10 +23,10 @@ exports.handler = async (event) => {
     const idToken = header.startsWith('Bearer ') ? header.slice(7) : null;
     if (!idToken) throw new Error('Missing Firebase ID token');
     const decoded = await admin.auth().verifyIdToken(idToken);
-    const { platform, accountId } = payload;
-    if (!platform || !accountId) throw new Error('platform and accountId are required');
+    const { platform, accountId, workspaceId } = payload;
+    if (!platform || !accountId || !workspaceId) throw new Error('platform, accountId and workspaceId are required');
 
-    const snapshot = await db.collection('accounts').where('userId', '==', decoded.uid).where('platform', '==', platform).where('accountId', '==', accountId).limit(1).get();
+    const snapshot = await db.collection(COLLECTIONS.socialConnections(workspaceId)).where('userId', '==', decoded.uid).where('platform', '==', platform).where('accountId', '==', accountId).limit(1).get();
     if (snapshot.empty) throw new Error('Connected account not found');
     const account = snapshot.docs[0].data();
     const result = await publishToPlatform(platform, { ...payload, accountId: account.accountId, accessToken: decryptToken(account.accessToken) });

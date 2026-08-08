@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
+import COLLECTIONS from '../../lib/schema.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
@@ -37,7 +38,7 @@ function EditBusiness() {
     if (!currentUser || !id) return;
 
     try {
-      const docRef = doc(db, 'businesses', id);
+      const docRef = doc(db, COLLECTIONS.workspaces, id);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
@@ -80,7 +81,7 @@ function EditBusiness() {
     setLoading(true);
 
     try {
-      const docRef = doc(db, 'businesses', id);
+      const docRef = doc(db, COLLECTIONS.workspaces, id);
       await updateDoc(docRef, {
         ...formData,
         updatedAt: new Date().toISOString()

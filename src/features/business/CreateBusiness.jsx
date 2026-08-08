@@ -10,6 +10,7 @@ import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { Building2, AlertCircle } from 'lucide-react';
 import './CreateBusiness.css';
+import COLLECTIONS from '../../lib/schema.js';
 
 function CreateBusiness() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -40,7 +41,7 @@ function CreateBusiness() {
     setLoading(true);
 
     try {
-      await addDoc(collection(db, 'businesses'), {
+      await addDoc(collection(db, COLLECTIONS.workspaces), {
         ...formData,
         userId: currentUser.uid,
         createdAt: new Date().toISOString(),

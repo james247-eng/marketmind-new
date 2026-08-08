@@ -3,11 +3,11 @@
 
 import { auth } from './firebase';
 
-const fetchAnalytics = async (platform, accountId) => {
+const fetchAnalytics = async (platform, accountId, workspaceId) => {
   const idToken = await auth.currentUser?.getIdToken();
   if (!idToken) return { success: false, error: 'You must be signed in to fetch analytics' };
   try {
-    const response = await fetch('/.netlify/functions/fetch-analytics', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` }, body: JSON.stringify({ platform, accountId }) });
+    const response = await fetch('/.netlify/functions/fetch-analytics', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` }, body: JSON.stringify({ platform, accountId, workspaceId }) });
     const data = await response.json();
     if (!response.ok || !data.success) throw new Error(data.error || 'Analytics request failed');
     return data;
@@ -15,11 +15,11 @@ const fetchAnalytics = async (platform, accountId) => {
     return { success: false, error: error.message };
   }
 };
-export const getFacebookInsights = (pageId) => fetchAnalytics('facebook', pageId);
-export const getInstagramInsights = (accountId) => fetchAnalytics('instagram', accountId);
-export const getTwitterAnalytics = (accountId) => fetchAnalytics('twitter', accountId);
-export const getTikTokAnalytics = (accountId) => fetchAnalytics('tiktok', accountId);
-export const getYouTubeAnalytics = (accountId) => fetchAnalytics('youtube', accountId);
+export const getFacebookInsights = (pageId, workspaceId) => fetchAnalytics('facebook', pageId, workspaceId);
+export const getInstagramInsights = (accountId, workspaceId) => fetchAnalytics('instagram', accountId, workspaceId);
+export const getTwitterAnalytics = (accountId, workspaceId) => fetchAnalytics('twitter', accountId, workspaceId);
+export const getTikTokAnalytics = (accountId, workspaceId) => fetchAnalytics('tiktok', accountId, workspaceId);
+export const getYouTubeAnalytics = (accountId, workspaceId) => fetchAnalytics('youtube', accountId, workspaceId);
 
 // Aggregate all platform analytics
 export const getAllPlatformAnalytics = async (connectedAccounts) => {
@@ -36,7 +36,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
 
     switch (account.platform) {
       case 'facebook':
-        platformData = await getFacebookInsights(account.accountId);
+        platformData = await getFacebookInsights(account.accountId, account.workspaceId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'Facebook',
@@ -48,7 +48,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'instagram':
-        platformData = await getInstagramInsights(account.accountId);
+        platformData = await getInstagramInsights(account.accountId, account.workspaceId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'Instagram',
@@ -60,7 +60,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'twitter':
-        platformData = await getTwitterAnalytics(account.accountId);
+        platformData = await getTwitterAnalytics(account.accountId, account.workspaceId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'Twitter',
@@ -72,7 +72,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'tiktok':
-        platformData = await getTikTokAnalytics(account.accountId);
+        platformData = await getTikTokAnalytics(account.accountId, account.workspaceId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'TikTok',
@@ -84,7 +84,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'youtube':
-        platformData = await getYouTubeAnalytics(account.accountId);
+        platformData = await getYouTubeAnalytics(account.accountId, account.workspaceId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'YouTube',

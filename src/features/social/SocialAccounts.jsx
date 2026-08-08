@@ -19,6 +19,9 @@ import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { Link2, X, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import './SocialAccounts.css';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../services/firebase.js';
+import COLLECTIONS from '../../lib/schema.js';
 
 // Maps the `state` param we set in each connect* function to its callback handler.
 // This is the single source of truth for callback routing — no more string-sniffing
@@ -48,6 +51,7 @@ function SocialAccounts() {
   const [connectingPlatform, setConnectingPlatform] = useState(null);
   const [error, setError]                     = useState('');
   const [success, setSuccess]                 = useState('');
+  const [workspaceId, setWorkspaceId]         = useState('');
   
   // Guard reference to prevent race conditions during OAuth callback processing mounts
   const callbackProcessed = useRef(false);
@@ -58,7 +62,7 @@ function SocialAccounts() {
     if (!currentUser) return;
     setLoading(true);
     try {
-      const result = await getConnectedAccounts(currentUser.uid);
+      const result = await getConnectedAccounts(currentUser.uid, workspaceId);
       if (result && result.success) {
         setConnectedAccounts(result.accounts || []);
       } else {
@@ -70,7 +74,7 @@ function SocialAccounts() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, workspaceId]);
 
   // ─── OAuth callback handling ─────────────────────────────────────────────────
   // Runs once on mount. Reads `code` and `state` from the URL query string.
@@ -107,7 +111,7 @@ function SocialAccounts() {
     setLoading(true);
 
     try {
-      const result = await handler(code, currentUser.uid);
+      const result = await handler(code, currentUser.uid, workspaceId);
 
       if (result && result.success) {
         setSuccess(`${formatPlatformName(state)} account connected successfully!`);
@@ -124,14 +128,17 @@ function SocialAccounts() {
       setConnectingPlatform(null);
       setLoading(false);
     }
-  }, [currentUser, fetchAccounts]);
+  }, [currentUser, fetchAccounts, workspaceId]);
 
   useEffect(() => {
-    if (currentUser) {
-      fetchAccounts();
-      handleOAuthCallback();
-    }
-  }, [currentUser, fetchAccounts, handleOAuthCallback]);
+    if (!currentUser) return;
+    (async () => {
+      const snap = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid)));
+      if (snap.size === 1) setWorkspaceId(snap.docs[0].id);
+    })();
+  }, [currentUser]);
+
+  useEffect(() => { if (workspaceId) { fetchAccounts(); handleOAuthCallback(); } }, [workspaceId, fetchAccounts, handleOAuthCallback]);
 
   // Auto-clear alerts after 5 seconds
   useEffect(() => {

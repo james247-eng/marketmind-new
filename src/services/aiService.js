@@ -1,4 +1,6 @@
 // aiService.js
+import { httpsCallable } from 'firebase/functions';
+import { functions } from './firebase.js';
 // AI calls go to Netlify Functions (Groq API — outbound HTTP blocked on Firebase Spark).
 // After a successful generation, Firebase is called ONLY to record usage in Firestore
 // (pure read/write, no outbound HTTP — safe on Spark plan).
@@ -26,20 +28,20 @@ const callNetlify = async (payload) => {
 // These only write to Firestore — no outbound HTTP — so they're safe on Spark.
 // Failures are non-fatal: we log but don't surface them to the user.
 
-const recordGeneration = async (prompt, tone, businessContext, content) => {
+const recordGeneration = async (workspaceId, prompt, tone, businessContext, content) => {
   try {
     const record = httpsCallable(functions, 'recordContentGeneration');
-    await record({ prompt, tone, businessContext, content });
+    await record({ workspaceId, prompt, tone, businessContext, content });
   } catch (err) {
     // Don't block the UI if recording fails
     console.warn('Usage tracking failed (non-fatal):', err.message);
   }
 };
 
-const recordResearchUsage = async (topic, businessNiche, insights) => {
+const recordResearchUsage = async (workspaceId, topic, businessNiche, insights) => {
   try {
     const record = httpsCallable(functions, 'recordResearch');
-    await record({ topic, businessNiche, insights });
+    await record({ workspaceId, topic, businessNiche, insights });
   } catch (err) {
     console.warn('Research tracking failed (non-fatal):', err.message);
   }
@@ -50,9 +52,10 @@ const recordResearchUsage = async (topic, businessNiche, insights) => {
 // Returns { success, content } — content is a JSON string with keys:
 // twitter, linkedin, instagram, tiktok, youtube
 
-export const generateContent = async (prompt, tone, businessContext, recentPostExamples = []) => {
+export const generateContent = async (workspaceId, prompt, tone, businessContext, recentPostExamples = []) => {
   try {
     const data = await callNetlify({ type: 'generate', prompt, tone, businessContext, recentPostExamples });
+    await recordGeneration(workspaceId, prompt, tone, businessContext, data.content);
 
     return {
       success: true,
@@ -72,9 +75,10 @@ export const generateContent = async (prompt, tone, businessContext, recentPostE
 // Called by ContentGenerator.jsx when "Include market research" is checked.
 // Returns { success, insights } — insights is a JSON string.
 
-export const conductResearch = async (topic, businessNiche) => {
+export const conductResearch = async (workspaceId, topic, businessNiche) => {
   try {
     const data = await callNetlify({ type: 'research', topic, businessNiche });
+    await recordResearchUsage(workspaceId, topic, businessNiche, data.insights);
 
     return {
       success: true,

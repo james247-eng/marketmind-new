@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
+import COLLECTIONS from '../../lib/schema.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { getConnectedAccounts } from '../../services/socialMediaService.js';
 import { getMockAnalytics } from '../../services/analyticsService.js';
@@ -58,7 +59,7 @@ function Dashboard() {
 
     try {
       const q = query(
-        collection(db, 'businesses'),
+        collection(db, COLLECTIONS.workspaces),
         where('userId', '==', currentUser.uid)
       );
       const snapshot = await getDocs(q);

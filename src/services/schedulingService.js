@@ -3,11 +3,13 @@
 
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy } from 'firebase/firestore';
 import { db } from './firebase.js';
+import COLLECTIONS from '../lib/schema.js';
 
 // Schedule a post
 export const schedulePost = async (postData) => {
   try {
-    const docRef = await addDoc(collection(db, 'scheduledPosts'), {
+    const workspaceId = postData.workspaceId || postData.businessId;
+    const docRef = await addDoc(collection(db, COLLECTIONS.publishingJobs(workspaceId)), {
       ...postData,
       status: 'scheduled',
       createdAt: new Date().toISOString(),
@@ -23,7 +25,7 @@ export const schedulePost = async (postData) => {
 export const getScheduledPosts = async (businessId, userId) => {
   try {
     const q = query(
-      collection(db, 'scheduledPosts'),
+      collection(db, COLLECTIONS.publishingJobs(businessId)),
       where('userId',     '==', userId),      // ← required by security rules
       where('businessId', '==', businessId),
       orderBy('scheduledTime', 'asc')
@@ -38,7 +40,7 @@ export const getScheduledPosts = async (businessId, userId) => {
 };
 
 // Update post status
-export const updatePostStatus = async (postId, status, publishResults = null) => {
+export const updatePostStatus = async (workspaceId, postId, status, publishResults = null) => {
   try {
     const updateData = {
       status,
@@ -48,7 +50,7 @@ export const updatePostStatus = async (postId, status, publishResults = null) =>
       updateData.publishResults = publishResults;
       updateData.publishedAt = new Date().toISOString();
     }
-    await updateDoc(doc(db, 'scheduledPosts', postId), updateData);
+    await updateDoc(doc(db, COLLECTIONS.publishingJobs(workspaceId), postId), updateData);
     return { success: true };
   } catch (error) {
     console.error('Error updating post status:', error);
@@ -57,9 +59,9 @@ export const updatePostStatus = async (postId, status, publishResults = null) =>
 };
 
 // Cancel scheduled post
-export const cancelScheduledPost = async (postId) => {
+export const cancelScheduledPost = async (workspaceId, postId) => {
   try {
-    await updateDoc(doc(db, 'scheduledPosts', postId), {
+    await updateDoc(doc(db, COLLECTIONS.publishingJobs(workspaceId), postId), {
       status: 'cancelled',
       updatedAt: new Date().toISOString(),
     });

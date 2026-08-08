@@ -3,6 +3,7 @@
 
 import { collection, addDoc, query, where, getDocs, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db } from './firebase.js';
+import COLLECTIONS from '../lib/schema.js';
 
 /**
  * Save generated content payload to Firestore
@@ -10,7 +11,7 @@ import { db } from './firebase.js';
  */
 export const saveContent = async (contentData) => {
   try {
-    const docRef = await addDoc(collection(db, 'content'), {
+    const docRef = await addDoc(collection(db, COLLECTIONS.contentItems(contentData.workspaceId || contentData.businessId)), {
       ...contentData,
       createdAt: new Date().toISOString(),
       status: 'draft',
@@ -32,7 +33,7 @@ export const getContentHistory = async (businessId, userId) => {
   try {
     // Primary index query matching exact dashboard requirements
     const primaryQuery = query(
-      collection(db, 'content'),
+      collection(db, COLLECTIONS.contentItems(businessId)),
       where('userId', '==', userId),
       where('businessId', '==', businessId),
       orderBy('createdAt', 'desc')
@@ -50,7 +51,7 @@ export const getContentHistory = async (businessId, userId) => {
       
       // Resilient fallback query if the developer has not configured composite indexes yet
       const fallbackQuery = query(
-        collection(db, 'content'),
+        collection(db, COLLECTIONS.contentItems(businessId)),
         where('userId', '==', userId),
         where('businessId', '==', businessId)
       );
@@ -84,9 +85,9 @@ export const getContentHistory = async (businessId, userId) => {
  * @param {string} contentId - Document ID target
  * @param {string} status - New target state ('draft', 'published', etc.)
  */
-export const updateContentStatus = async (contentId, status) => {
+export const updateContentStatus = async (workspaceId, contentId, status) => {
   try {
-    await updateDoc(doc(db, 'content', contentId), {
+    await updateDoc(doc(db, COLLECTIONS.contentItems(workspaceId), contentId), {
       status,
       updatedAt: new Date().toISOString(),
     });
