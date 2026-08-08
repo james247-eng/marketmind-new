@@ -1,137 +1,25 @@
 // analyticsService.js
 // Fetch analytics from social media platforms
 
-// Fetch Facebook Page Insights
-export const getFacebookInsights = async (pageId, accessToken) => {
-  try {
-    const metrics = 'page_impressions,page_engaged_users,page_post_engagements,page_fans';
-    const response = await fetch(
-      `https://graph.facebook.com/v18.0/${pageId}/insights?metric=${metrics}&period=day&access_token=${accessToken}`
-    );
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      throw new Error(data.error.message);
-    }
+import { auth } from './firebase';
 
-    return {
-      success: true,
-      data: data.data
-    };
+const fetchAnalytics = async (platform, accountId) => {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) return { success: false, error: 'You must be signed in to fetch analytics' };
+  try {
+    const response = await fetch('/.netlify/functions/fetch-analytics', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` }, body: JSON.stringify({ platform, accountId }) });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Analytics request failed');
+    return data;
   } catch (error) {
-    console.error('Facebook insights error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 };
-
-// Fetch Instagram Insights
-export const getInstagramInsights = async (accountId, accessToken) => {
-  try {
-    const metrics = 'impressions,reach,profile_views,follower_count';
-    const response = await fetch(
-      `https://graph.facebook.com/v18.0/${accountId}/insights?metric=${metrics}&period=day&access_token=${accessToken}`
-    );
-    
-    const data = await response.json();
-    
-    return {
-      success: true,
-      data: data.data
-    };
-  } catch (error) {
-    console.error('Instagram insights error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-};
-
-// Fetch Twitter Analytics
-export const getTwitterAnalytics = async (accessToken) => {
-  try {
-    // Get user metrics
-    const response = await fetch(
-      'https://api.twitter.com/2/users/me?user.fields=public_metrics',
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-    
-    const data = await response.json();
-    
-    return {
-      success: true,
-      data: data.data
-    };
-  } catch (error) {
-    console.error('Twitter analytics error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-};
-
-// Fetch TikTok Analytics
-export const getTikTokAnalytics = async (accessToken) => {
-  try {
-    const response = await fetch(
-      'https://open.tiktokapis.com/v2/research/user/info/',
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-    
-    const data = await response.json();
-    
-    return {
-      success: true,
-      data: data.data
-    };
-  } catch (error) {
-    console.error('TikTok analytics error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-};
-
-// Fetch YouTube Analytics
-export const getYouTubeAnalytics = async (accessToken) => {
-  try {
-    const response = await fetch(
-      'https://www.googleapis.com/youtube/v3/channels?part=statistics&mine=true',
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
-    );
-    
-    const data = await response.json();
-    
-    return {
-      success: true,
-      data: data.items[0].statistics
-    };
-  } catch (error) {
-    console.error('YouTube analytics error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-};
+export const getFacebookInsights = (pageId) => fetchAnalytics('facebook', pageId);
+export const getInstagramInsights = (accountId) => fetchAnalytics('instagram', accountId);
+export const getTwitterAnalytics = (accountId) => fetchAnalytics('twitter', accountId);
+export const getTikTokAnalytics = (accountId) => fetchAnalytics('tiktok', accountId);
+export const getYouTubeAnalytics = (accountId) => fetchAnalytics('youtube', accountId);
 
 // Aggregate all platform analytics
 export const getAllPlatformAnalytics = async (connectedAccounts) => {
@@ -148,7 +36,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
 
     switch (account.platform) {
       case 'facebook':
-        platformData = await getFacebookInsights(account.accountId, account.accessToken);
+        platformData = await getFacebookInsights(account.accountId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'Facebook',
@@ -160,7 +48,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'instagram':
-        platformData = await getInstagramInsights(account.accountId, account.accessToken);
+        platformData = await getInstagramInsights(account.accountId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'Instagram',
@@ -172,7 +60,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'twitter':
-        platformData = await getTwitterAnalytics(account.accessToken);
+        platformData = await getTwitterAnalytics(account.accountId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'Twitter',
@@ -184,7 +72,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'tiktok':
-        platformData = await getTikTokAnalytics(account.accessToken);
+        platformData = await getTikTokAnalytics(account.accountId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'TikTok',
@@ -196,7 +84,7 @@ export const getAllPlatformAnalytics = async (connectedAccounts) => {
         break;
 
       case 'youtube':
-        platformData = await getYouTubeAnalytics(account.accessToken);
+        platformData = await getYouTubeAnalytics(account.accountId);
         if (platformData.success) {
           analytics.platformBreakdown.push({
             platform: 'YouTube',
