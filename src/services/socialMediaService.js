@@ -51,7 +51,6 @@ export const postToFacebook = async (pageId, message, link, workspaceId) => {
 };
 
 export const postToInstagram = async (accountId, imageUrl, caption, workspaceId) => postViaNetlify({ platform: 'instagram', accountId, workspaceId, mediaUrl: imageUrl, content: caption });
-};
 
 export const postToTwitter = async (accountId, text, workspaceId) => {
   return postViaNetlify({ platform: 'twitter', accountId, workspaceId, content: text });
