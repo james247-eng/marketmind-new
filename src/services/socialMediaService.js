@@ -4,18 +4,21 @@
 // ALL outbound HTTP to external APIs goes through Netlify Functions.
 // Firebase is used ONLY for Firestore reads/writes.
 
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase';
+import { auth } from './firebase';
 
 const REDIRECT_URI = window.location.origin + '/accounts';
 
 // ─── Netlify helpers ──────────────────────────────────────────────────────────
 
-const exchangeViaNetlify = async (platform, code, userId) => {
+const exchangeViaNetlify = async (platform, code) => {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) throw new Error('You must be signed in to connect a social account');
   const response = await fetch('/.netlify/functions/oauthExchange', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ platform, code, redirectUri: REDIRECT_URI, userId }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ platform, code, redirectUri: REDIRECT_URI }),
   });
   const data = await response.json();
   if (!response.ok || !data.success) {
@@ -26,9 +29,11 @@ const exchangeViaNetlify = async (platform, code, userId) => {
 
 // Single entry point for all platform posting.
 const postViaNetlify = async (payload) => {
-  const response = await fetch('/.netlify/functions/post-to-platform', {
+  const idToken = await auth.currentUser?.getIdToken();
+  if (!idToken) throw new Error('You must be signed in to publish');
+  const response = await fetch('/.netlify/functions/resolve-and-post', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
     body: JSON.stringify(payload),
   });
   const data = await response.json();
@@ -40,24 +45,24 @@ const postViaNetlify = async (payload) => {
 
 // ─── Direct Platform posting abstractions ────────────────────────────────────
 
-export const postToFacebook = async (pageId, accessToken, message, link = null) => {
-  return postViaNetlify({ platform: 'facebook', pageId, accessToken, message, link });
+export const postToFacebook = async (pageId, _accessToken, message, link = null) => {
+  return postViaNetlify({ platform: 'facebook', accountId: pageId, content: message, mediaUrl: link });
 };
 
-export const postToInstagram = async (instagramBusinessAccountId, accessToken, imageUrl, caption) => {
-  return postViaNetlify({ platform: 'instagram', instagramBusinessAccountId, accessToken, imageUrl, caption });
+export const postToInstagram = async (instagramBusinessAccountId, _accessToken, imageUrl, caption) => {
+  return postViaNetlify({ platform: 'instagram', accountId: instagramBusinessAccountId, mediaUrl: imageUrl, content: caption });
 };
 
-export const postToTwitter = async (accessToken, text) => {
-  return postViaNetlify({ platform: 'twitter', accessToken, text });
+export const postToTwitter = async (accountId, _accessToken, text) => {
+  return postViaNetlify({ platform: 'twitter', accountId, content: text });
 };
 
-export const postToTikTok = async (accessToken, videoUrl, title) => {
-  return postViaNetlify({ platform: 'tiktok', accessToken, videoUrl, title });
+export const postToTikTok = async (accountId, _accessToken, videoUrl, title) => {
+  return postViaNetlify({ platform: 'tiktok', accountId, mediaUrl: videoUrl, content: title });
 };
 
-export const postToYouTube = async (accessToken, videoUrl, title, description) => {
-  return postViaNetlify({ platform: 'youtube', accessToken, videoUrl, title, description });
+export const postToYouTube = async (accountId, _accessToken, videoUrl, title, description) => {
+  return postViaNetlify({ platform: 'youtube', accountId, mediaUrl: videoUrl, title, description, content: title });
 };
 
 // ─── Account management (Firestore Only) ──────────────────────────────────────
@@ -66,7 +71,10 @@ export const getConnectedAccounts = async (userId) => {
   try {
     const q = query(collection(db, 'accounts'), where('userId', '==', userId));
     const snapshot = await getDocs(q);
-    const accounts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const accounts = snapshot.docs.map(d => {
+      const data = d.data();
+      return { id: d.id, userId: data.userId, platform: data.platform, accountId: data.accountId, accountName: data.accountName, connectedAt: data.connectedAt };
+    });
     return { success: true, accounts };
   } catch (err) {
     console.error('Error fetching accounts from firestore:', err);
@@ -118,32 +126,8 @@ export const connectYouTube = () => {
 
 export const handleFacebookCallback = async (code, userId) => {
   try {
-    const data = await exchangeViaNetlify('facebook', code, userId);
-    if (data.multiple && data.accounts) {
-      let savedCount = 0;
-      for (const account of data.accounts) {
-        const q = query(
-          collection(db, 'accounts'),
-          where('userId', '==', userId),
-          where('platform', '==', data.platform),
-          where('accountId', '==', account.accountId)
-        );
-        const existing = await getDocs(q);
-        if (existing.empty) {
-          await addDoc(collection(db, 'accounts'), {
-            userId,
-            platform: data.platform,
-            accountId: account.accountId,
-            accountName: account.accountName,
-            accessToken: account.accessToken,
-            connectedAt: new Date().toISOString(),
-          });
-          savedCount++;
-        }
-      }
-      return { success: true, message: `Connected ${savedCount} Facebook/Instagram pages successfully.` };
-    }
-    return { success: false, error: 'Malformed multi-account token data returned from exchange.' };
+    const data = await exchangeViaNetlify('facebook', code);
+    return { success: true, message: `Connected ${(data.accounts || []).length} Facebook/Instagram pages successfully.` };
   } catch (err) {
     console.error('FB callback exception handling:', err);
     return { success: false, error: err.message };
@@ -152,16 +136,7 @@ export const handleFacebookCallback = async (code, userId) => {
 
 export const handleTikTokCallback = async (code, userId) => {
   try {
-    const data = await exchangeViaNetlify('tiktok', code, userId);
-    await addDoc(collection(db, 'accounts'), {
-      userId,
-      platform: 'tiktok',
-      accountId: data.accountId,
-      accountName: data.accountName || 'TikTok User',
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      connectedAt: new Date().toISOString(),
-    });
+    const data = await exchangeViaNetlify('tiktok', code);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -170,16 +145,7 @@ export const handleTikTokCallback = async (code, userId) => {
 
 export const handleTwitterCallback = async (code, userId) => {
   try {
-    const data = await exchangeViaNetlify('twitter', code, userId);
-    await addDoc(collection(db, 'accounts'), {
-      userId,
-      platform: 'twitter',
-      accountId: data.accountId,
-      accountName: data.accountName || 'Twitter User',
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      connectedAt: new Date().toISOString(),
-    });
+    const data = await exchangeViaNetlify('twitter', code);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -188,16 +154,7 @@ export const handleTwitterCallback = async (code, userId) => {
 
 export const handleYouTubeCallback = async (code, userId) => {
   try {
-    const data = await exchangeViaNetlify('youtube', code, userId);
-    await addDoc(collection(db, 'accounts'), {
-      userId,
-      platform: 'youtube',
-      accountId: data.accountId,
-      accountName: data.accountName || 'YouTube Channel',
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      connectedAt: new Date().toISOString(),
-    });
+    const data = await exchangeViaNetlify('youtube', code);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -220,7 +177,7 @@ export const postToMultiplePlatforms = async (accounts, contentByPlatform, media
 
   const results = [];
   for (const account of accounts) {
-    const { platform, accountId, accessToken, accountName } = account;
+    const { platform, accountId, accountName } = account;
     
     // Resilient content resolution fallback sequence
     const platformContent = parsed[platform] || parsed.twitter || (typeof contentByPlatform === 'string' ? contentByPlatform : '');
@@ -229,19 +186,19 @@ export const postToMultiplePlatforms = async (accounts, contentByPlatform, media
     try {
       switch (platform) {
         case 'facebook':
-          result = await postToFacebook(accountId, accessToken, platformContent, mediaUrl); 
+          result = await postToFacebook(accountId, null, platformContent, mediaUrl); 
           break;
         case 'instagram':
-          result = await postToInstagram(accountId, accessToken, mediaUrl, platformContent); 
+          result = await postToInstagram(accountId, null, mediaUrl, platformContent); 
           break;
         case 'twitter':
-          result = await postToTwitter(accessToken, platformContent); 
+          result = await postToTwitter(accountId, null, platformContent); 
           break;
         case 'tiktok':
-          result = await postToTikTok(accessToken, mediaUrl, platformContent); 
+          result = await postToTikTok(accountId, null, mediaUrl, platformContent); 
           break;
         case 'youtube':
-          result = await postToYouTube(accessToken, mediaUrl, platformContent.slice(0, 100), platformContent); 
+          result = await postToYouTube(accountId, null, mediaUrl, platformContent.slice(0, 100), platformContent); 
           break;
         default:
           result = { success: false, error: `Unsupported platform option context: ${platform}` };
