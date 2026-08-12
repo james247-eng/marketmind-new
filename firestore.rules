@@ -1,28 +1,104 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function canAccessWorkspace(workspaceId) {
-      return signedIn() && (
-        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.userId == request.auth.uid ||
-        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid))
-      );
-    }
 
+    // ===== USERS =====
     match /users/{userId} {
-      allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
-    }
-
-    match /workspaces/{workspaceId} {
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if canAccessWorkspace(workspaceId);
-
-      match /{subcollection}/{document=**} {
-        allow read, write: if canAccessWorkspace(workspaceId);
+      allow read, write: if request.auth != null 
+        && request.auth.uid == userId;
+      match /{document=**} {
+        allow read, write: if request.auth != null 
+          && request.auth.uid == userId;
       }
     }
 
-    match /organizations/{organizationId} { allow read, write: if false; }
-    match /auditLogs/{logId} { allow read, write: if false; }
+    // ===== WORKSPACES =====
+    match /workspaces/{workspaceId} {
+      allow read, update, delete: if request.auth != null 
+        && (resource.data.ownerId == request.auth.uid
+        || exists(/databases/$(database)/documents/
+           workspaces/$(workspaceId)/members/$(request.auth.uid)));
+      allow create: if request.auth != null 
+        && request.resource.data.ownerId == request.auth.uid;
+
+      // Brand profile
+      match /brandProfile/{doc} {
+        allow read, write: if request.auth != null
+          && (get(/databases/$(database)/documents/
+             workspaces/$(workspaceId)).data.ownerId 
+             == request.auth.uid
+          || exists(/databases/$(database)/documents/
+             workspaces/$(workspaceId)/members/$(request.auth.uid)));
+      }
+
+      // All other workspace subcollections
+      match /{subcollection}/{docId} {
+        allow read, write: if request.auth != null
+          && (get(/databases/$(database)/documents/
+             workspaces/$(workspaceId)).data.ownerId 
+             == request.auth.uid
+          || exists(/databases/$(database)/documents/
+             workspaces/$(workspaceId)/members/$(request.auth.uid)));
+      }
+
+      // Members subcollection
+      match /members/{memberId} {
+        allow read: if request.auth != null
+          && (get(/databases/$(database)/documents/
+             workspaces/$(workspaceId)).data.ownerId 
+             == request.auth.uid
+          || request.auth.uid == memberId);
+        allow write: if request.auth != null
+          && get(/databases/$(database)/documents/
+             workspaces/$(workspaceId)).data.ownerId 
+             == request.auth.uid;
+      }
+    }
+
+    // ===== LEGACY COLLECTIONS (keep during transition) =====
+    match /businesses/{businessId} {
+      allow read, delete: if request.auth != null 
+        && resource.data.userId == request.auth.uid;
+      allow create, update: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /content/{contentId} {
+      allow read, delete: if request.auth != null 
+        && resource.data.userId == request.auth.uid;
+      allow create, update: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /scheduledPosts/{postId} {
+      allow read, delete: if request.auth != null 
+        && resource.data.userId == request.auth.uid;
+      allow create, update: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /socialAccounts/{accountId} {
+      allow read, delete: if request.auth != null 
+        && resource.data.userId == request.auth.uid;
+      allow create, update: if request.auth != null 
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /training_data/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /subscriptions/{subId} {
+      allow read: if request.auth != null 
+        && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ===== AUDIT LOGS =====
+    match /auditLogs/{logId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }
