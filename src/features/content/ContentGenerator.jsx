@@ -1,6 +1,7 @@
 // ContentGenerator.jsx
 
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import COLLECTIONS from '../../lib/schema.js';
@@ -572,7 +573,7 @@ function ContentGenerator() {
 
                 {connectedAccounts.length === 0 && (
                   <p className="no-accounts-hint">
-                    <a href="/accounts">Connect social accounts</a> to post directly from here.
+                    <Link to={formData.businessId ? `/app/${formData.businessId}/social` : '/app'}>Connect social accounts</Link> to post directly from here.
                   </p>
                 )}
 

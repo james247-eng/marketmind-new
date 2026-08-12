@@ -33,7 +33,7 @@ function Login() {
     const result = await signInWithEmail(formData.email, formData.password);
 
     if (result.success) {
-      navigate('/dashboard');
+      navigate('/app');
     } else {
       setError(result.error);
     }
@@ -48,7 +48,7 @@ function Login() {
     const result = await signInWithGoogle();
 
     if (result.success) {
-      navigate('/dashboard');
+      navigate('/app');
     } else {
       setError(result.error);
     }

@@ -1,6 +1,7 @@
 // Sidebar.jsx
 import './Sidebar.css';
 import { useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Building2, 
@@ -14,14 +15,16 @@ import {
 } from 'lucide-react';
 
 function Sidebar({ isOpen, onClose }) {
+  const { workspaceId } = useParams();
+
   const menuItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    { name: 'My Businesses', icon: Building2, path: '/businesses' },
-    { name: 'Generate Content', icon: Sparkles, path: '/generate' },
-    { name: 'Content History', icon: FileText, path: '/history' },
-    { name: 'Schedule Posts', icon: Calendar, path: '/schedule' },
-    { name: 'Social Accounts', icon: Link2, path: '/accounts' },
-    { name: 'Settings', icon: Settings, path: '/settings' },
+    { name: 'Dashboard', icon: LayoutDashboard, path: workspaceId ? `/app/${workspaceId}/analytics` : '/app' },
+    { name: 'My Workspaces', icon: Building2, path: '/app/workspaces' },
+    { name: 'Generate Content', icon: Sparkles, path: workspaceId ? `/app/${workspaceId}/content` : '/app' },
+    { name: 'Content History', icon: FileText, path: workspaceId ? `/app/${workspaceId}/content/history` : '/app' },
+    { name: 'Schedule Posts', icon: Calendar, path: workspaceId ? `/app/${workspaceId}/calendar` : '/app' },
+    { name: 'Social Accounts', icon: Link2, path: workspaceId ? `/app/${workspaceId}/social` : '/app' },
+    { name: 'Settings', icon: Settings, path: workspaceId ? `/app/${workspaceId}/settings` : '/app' },
   ];
 
   return (
@@ -47,15 +50,15 @@ function Sidebar({ isOpen, onClose }) {
             const IconComponent = item.icon;
             
             return (
-              <a 
+              <Link 
                 key={item.name} 
-                href={item.path} 
+                to={item.path} 
                 className="sidebar-item"
                 onClick={onClose}
               >
                 <IconComponent className="sidebar-icon" size={20} />
                 <span className="sidebar-text">{item.name}</span>
-              </a>
+              </Link>
             );
           })}
         </nav>

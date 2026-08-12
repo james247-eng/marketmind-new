@@ -86,7 +86,7 @@ function EditBusiness() {
         ...formData,
         updatedAt: new Date().toISOString()
       });
-      navigate('/businesses');
+      navigate('/app/workspaces');
     } catch (err) {
       setError('Failed to update business. Please try again.');
       console.error(err);
@@ -238,7 +238,7 @@ function EditBusiness() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => navigate('/businesses')}
+                  onClick={() => navigate('/app/workspaces')}
                 >
                   Cancel
                 </button>

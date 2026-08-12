@@ -57,7 +57,7 @@ function BusinessList() {
             </div>
             <button 
               className="btn-primary"
-              onClick={() => navigate('/businesses/create')}
+              onClick={() => navigate('/app/workspaces/create')}
             >
               <Plus size={20} />
               Add Business
@@ -73,7 +73,7 @@ function BusinessList() {
               <p>Create your first business to start generating content</p>
               <button 
                 className="btn-primary"
-                onClick={() => navigate('/businesses/create')}
+                onClick={() => navigate('/app/workspaces/create')}
               >
                 <Plus size={20} />
                 Create Business
@@ -101,7 +101,7 @@ function BusinessList() {
                     <span className="presence-badge">{business.presenceType}</span>
                     <button 
                       className="btn-view"
-                      onClick={() => navigate(`/businesses/${business.id}/edit`)}
+                      onClick={() => navigate(`/app/workspaces/${business.id}/edit`)}
                     >
                       Edit
                     </button>

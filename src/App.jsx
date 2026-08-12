@@ -9,7 +9,8 @@ import Login from './features/auth/Login';
 import Signup from './features/auth/Signup';
 import OAuthCallback from './components/OAuthCallback';
 
-// Dashboard Pages
+// App Pages
+import WorkspaceSelector from './pages/app/WorkspaceSelector';
 import Dashboard from './features/dashboard/Dashboard';
 import WorkspaceList from './features/workspaces/WorkspaceList';
 import CreateWorkspace from './features/workspaces/CreateWorkspace';
@@ -28,6 +29,7 @@ import BlogPage from './pages/marketing/Blog';
 import PrivacyPage from './pages/legal/Privacy';
 import TermsPage from './pages/legal/Terms';
 import DataDeletion from './pages/legal/DataDeletion';
+import NotFound from './pages/NotFound';
 import './App.css';
 
 function App() {
@@ -51,70 +53,7 @@ function App() {
           {/* OAuth Callback Routes for Social Media Platforms */}
           <Route path="/auth/:platform/callback" element={<OAuthCallback />} />
 
-          {/* Protected Dashboard Routes */}
-          <Route 
-            path="/dashboard" 
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } 
-          />
-          
-          <Route 
-            path="/businesses" 
-            element={
-              <ProtectedRoute>
-                <WorkspaceList />
-              </ProtectedRoute>
-            } 
-          />
-          
-          <Route 
-            path="/businesses/create" 
-            element={
-              <ProtectedRoute>
-                <CreateWorkspace />
-              </ProtectedRoute>
-            } 
-          />
-          
-          <Route 
-            path="/businesses/:id/edit" 
-            element={
-              <ProtectedRoute>
-                <EditWorkspace />
-              </ProtectedRoute>
-            } 
-          />
-          
-          <Route 
-            path="/generate" 
-            element={
-              <ProtectedRoute>
-                <ContentGenerator />
-              </ProtectedRoute>
-            } 
-          />
-          
-          <Route 
-            path="/history" 
-            element={
-              <ProtectedRoute>
-                <ContentHistory />
-              </ProtectedRoute>
-            } 
-          />
-          
-          <Route 
-            path="/schedule" 
-            element={
-              <ProtectedRoute>
-                <PostScheduler />
-              </ProtectedRoute>
-            } 
-          />
-          
+          {/* Compatibility Route */}
           <Route 
             path="/accounts" 
             element={
@@ -125,7 +64,84 @@ function App() {
           />
           
           <Route 
-            path="/settings" 
+            path="/dashboard" 
+            element={<Navigate to="/app" replace />} 
+          />
+
+          <Route 
+            path="/app" 
+            element={
+              <ProtectedRoute>
+                <WorkspaceSelector />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/workspaces" 
+            element={
+              <ProtectedRoute>
+                <WorkspaceList />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/workspaces/create" 
+            element={
+              <ProtectedRoute>
+                <CreateWorkspace />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/workspaces/:id/edit" 
+            element={
+              <ProtectedRoute>
+                <EditWorkspace />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/:workspaceId/content" 
+            element={
+              <ProtectedRoute>
+                <ContentGenerator />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/:workspaceId/content/history" 
+            element={
+              <ProtectedRoute>
+                <ContentHistory />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/:workspaceId/calendar" 
+            element={
+              <ProtectedRoute>
+                <PostScheduler />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/:workspaceId/social" 
+            element={
+              <ProtectedRoute>
+                <SocialAccounts />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/:workspaceId/settings" 
             element={
               <ProtectedRoute>
                 <Settings />
@@ -133,8 +149,17 @@ function App() {
             } 
           />
 
-          {/* 404 - Redirect to home */}
-          <Route path="*" element={<Navigate to="/" />} />
+          <Route 
+            path="/app/:workspaceId/analytics" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+
+          {/* 404 */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

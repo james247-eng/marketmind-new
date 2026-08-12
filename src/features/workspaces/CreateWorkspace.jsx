@@ -47,7 +47,7 @@ function CreateBusiness() {
         createdAt: new Date().toISOString(),
         postsGenerated: 0
       });
-      navigate('/businesses');
+      navigate('/app/workspaces');
     } catch (err) {
       setError('Failed to create business. Please try again.');
       console.error(err);
@@ -185,7 +185,7 @@ function CreateBusiness() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  onClick={() => navigate('/businesses')}
+                  onClick={() => navigate('/app/workspaces')}
                 >
                   Cancel
                 </button>

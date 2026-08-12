@@ -49,7 +49,7 @@ function Signup() {
     );
 
     if (result.success) {
-      navigate('/dashboard');
+      navigate('/app');
     } else {
       setError(result.error);
     }
@@ -63,7 +63,7 @@ function Signup() {
     const result = await signInWithGoogle();
 
     if (result.success) {
-      navigate('/dashboard');
+      navigate('/app');
     } else {
       setError(result.error);
     }

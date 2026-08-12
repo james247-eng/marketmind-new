@@ -1,5 +1,6 @@
 // ContentHistory.jsx
 import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
@@ -454,7 +455,7 @@ function ContentHistory() {
                             ) : (
                               <div className="drawer-repost-missing-channels-hint">
                                 <AlertCircle size={16} />
-                                <p>No linked channels found. Link your accounts in the <a href="/accounts">Social Accounts Panel</a> to toggle live background repost hooks.</p>
+                                <p>No linked channels found. Link your accounts in the <a href="/app/:workspaceId/social">Social Accounts Panel</a> to toggle live background repost hooks.</p>
                               </div>
                             )}
                           </div>

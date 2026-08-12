@@ -2,6 +2,7 @@
 // Schedule posts to social media
 
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -198,7 +199,7 @@ function PostScheduler() {
                     ))}
                   </select>
                   {savedContent.length === 0 && (
-                    <p className="hint-text">No saved content. <a href="/generate">Generate content first</a></p>
+                    <p className="hint-text">No saved content. <Link to={selectedBusiness ? `/app/${selectedBusiness}/content` : '/app'}>Generate content first</Link></p>
                   )}
                 </div>
 
@@ -206,7 +207,7 @@ function PostScheduler() {
                   <label>Choose Platforms</label>
                   <div className="platform-list">
                     {connectedAccounts.length === 0 ? (
-                      <p className="hint-text">No connected accounts. <a href="/accounts">Connect platforms first</a></p>
+                      <p className="hint-text">No connected accounts. <Link to={selectedBusiness ? `/app/${selectedBusiness}/social` : '/app'}>Connect platforms first</Link></p>
                     ) : (
                       connectedAccounts.map(account => (
                         <label key={account.id} className="checkbox-item">
