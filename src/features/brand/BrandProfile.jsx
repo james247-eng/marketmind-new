@@ -7,6 +7,25 @@ import Header from '../../components/Header.jsx';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import './BrandOnboarding.css';
 
+const INDUSTRIES = [
+  'Fashion',
+  'Health & Fitness',
+  'Food & Beverage',
+  'Technology',
+  'Education',
+  'Beauty & Cosmetics',
+  'Real Estate',
+  'Finance',
+  'Retail',
+  'Services',
+  'Other'
+];
+
+const AGE_RANGES = ['13-17', '18-24', '25-34', '35-44', '45-54', '55+'];
+const LOCATION_OPTIONS = ['Nigeria only', 'Africa', 'Global'];
+const VOICE_TONES = ['Professional', 'Friendly', 'Bold', 'Inspiring', 'Humorous', 'Luxury'];
+const LANGUAGE_STYLES = ['Formal', 'Conversational', 'Gen Z / Street'];
+
 function BrandProfile() {
   const { workspaceId } = useParams();
   const { currentUser } = useAuth();

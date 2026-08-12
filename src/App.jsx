@@ -13,7 +13,6 @@ import OAuthCallback from './components/OAuthCallback';
 import WorkspaceSelector from './pages/app/WorkspaceSelector';
 import Dashboard from './features/dashboard/Dashboard';
 import WorkspaceList from './features/workspaces/WorkspaceList';
-import CreateWorkspace from './features/workspaces/CreateWorkspace';
 import EditWorkspace from './features/workspaces/EditWorkspace';
 import ContentGenerator from './features/content/ContentGenerator';
 import ContentHistory from './features/content/ContentHistory';
@@ -92,7 +91,7 @@ function App() {
             path="/app/workspaces/create" 
             element={
               <ProtectedRoute>
-                <CreateWorkspace />
+                <BrandOnboarding />
               </ProtectedRoute>
             } 
           />

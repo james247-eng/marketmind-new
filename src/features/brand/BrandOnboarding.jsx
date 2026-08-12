@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../services/firebase.js';
 import { getBrandProfile, saveBrandProfile } from '../../services/brandService.js';
+import COLLECTIONS from '../../lib/schema.js';
 import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
 import { AlertCircle, CheckCircle } from 'lucide-react';
@@ -179,32 +182,41 @@ function BrandOnboarding() {
 
     setSaving(true);
     setError('');
-    const result = await saveBrandProfile(workspaceId, profile);
-    setSaving(false);
 
-    if (!result.success) {
-      setError(result.error || 'Unable to save brand profile.');
-      return;
+    try {
+      let effectiveWorkspaceId = workspaceId;
+
+      if (!effectiveWorkspaceId) {
+        const workspacePayload = {
+          ownerId: currentUser.uid,
+          name: profile.businessName,
+          industry: profile.industry,
+          description: profile.description,
+          status: 'active',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        const workspaceDoc = await addDoc(collection(db, COLLECTIONS.workspaces), workspacePayload);
+        effectiveWorkspaceId = workspaceDoc.id;
+      }
+
+      const result = await saveBrandProfile(effectiveWorkspaceId, profile);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Unable to save brand profile.');
+      }
+
+      setSuccess('Workspace and brand profile saved successfully. Redirecting…');
+      setTimeout(() => {
+        navigate(`/app/${effectiveWorkspaceId}/content`, { replace: true });
+      }, 500);
+    } catch (saveError) {
+      console.error('Brand setup save failed:', saveError);
+      setError(saveError.message || 'Failed to create workspace and brand profile.');
+    } finally {
+      setSaving(false);
     }
-
-    setSuccess('Brand profile saved successfully. Redirecting…');
-    setTimeout(() => {
-      navigate(`/app/${workspaceId}/brand`, { replace: true });
-    }, 500);
-  };
-
-  if (loading) {
-    return (
-      <div className="app">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="main-content">
-          <Header onMenuClick={() => setSidebarOpen(true)} />
-          <div className="content-area">
-            <div className="loading-state">Loading brand setup…</div>
-          </div>
-        </main>
-      </div>
-    );
   }
 
   return (
