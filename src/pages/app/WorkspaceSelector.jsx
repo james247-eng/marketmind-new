@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../services/firebase.js';
 import COLLECTIONS from '../../lib/schema.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { getBrandProfile } from '../../services/brandService.js';
 
 function WorkspaceSelector() {
   const { currentUser } = useAuth();
@@ -21,7 +22,12 @@ function WorkspaceSelector() {
         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setWorkspaces(list);
         if (list.length === 1) {
-          navigate(`/app/${list[0].id}/content`, { replace: true });
+          const profileResult = await getBrandProfile(list[0].id);
+          if (profileResult.success && profileResult.profile) {
+            navigate(`/app/${list[0].id}/content`, { replace: true });
+          } else {
+            navigate(`/app/${list[0].id}/brand/setup`, { replace: true });
+          }
         } else if (list.length === 0) {
           navigate('/app/workspaces/create', { replace: true });
         }
@@ -63,7 +69,19 @@ function WorkspaceSelector() {
                     background: '#fff',
                     cursor: 'pointer'
                   }}
-                  onClick={() => navigate(`/app/${workspace.id}/content`)}
+                  onClick={async () => {
+                    try {
+                      const profileResult = await getBrandProfile(workspace.id);
+                      if (profileResult.success && profileResult.profile) {
+                        navigate(`/app/${workspace.id}/content`);
+                      } else {
+                        navigate(`/app/${workspace.id}/brand/setup`);
+                      }
+                    } catch (err) {
+                      console.error(err);
+                      navigate(`/app/${workspace.id}/content`);
+                    }
+                  }}
                 >
                   <strong>{workspace.name}</strong>
                   <div style={{ marginTop: '6px', color: '#555' }}>

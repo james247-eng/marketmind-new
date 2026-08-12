@@ -20,6 +20,8 @@ import ContentHistory from './features/content/ContentHistory';
 import PostScheduler from './features/calendar/PostScheduler';
 import SocialAccounts from './features/social-connections/SocialAccounts';
 import Settings from './features/settings/Settings';
+import BrandOnboarding from './features/brand/BrandOnboarding';
+import BrandProfile from './features/brand/BrandProfile';
 
 // Public Pages
 import LandingPage from './pages/marketing/LandingPage';
@@ -136,6 +138,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <SocialAccounts />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/:workspaceId/brand/setup" 
+            element={
+              <ProtectedRoute>
+                <BrandOnboarding />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/app/:workspaceId/brand" 
+            element={
+              <ProtectedRoute>
+                <BrandProfile />
               </ProtectedRoute>
             } 
           />

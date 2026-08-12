@@ -22,6 +22,7 @@ function Sidebar({ isOpen, onClose }) {
     { name: 'My Workspaces', icon: Building2, path: '/app/workspaces' },
     { name: 'Generate Content', icon: Sparkles, path: workspaceId ? `/app/${workspaceId}/content` : '/app' },
     { name: 'Content History', icon: FileText, path: workspaceId ? `/app/${workspaceId}/content/history` : '/app' },
+    { name: 'Brand Setup', icon: Crown, path: workspaceId ? `/app/${workspaceId}/brand` : '/app' },
     { name: 'Schedule Posts', icon: Calendar, path: workspaceId ? `/app/${workspaceId}/calendar` : '/app' },
     { name: 'Social Accounts', icon: Link2, path: workspaceId ? `/app/${workspaceId}/social` : '/app' },
     { name: 'Settings', icon: Settings, path: workspaceId ? `/app/${workspaceId}/settings` : '/app' },
