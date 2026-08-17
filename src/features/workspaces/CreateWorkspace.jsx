@@ -43,7 +43,7 @@ function CreateBusiness() {
     try {
       await addDoc(collection(db, COLLECTIONS.workspaces), {
         ...formData,
-        userId: currentUser.uid,
+        ownerId: currentUser.uid,
         createdAt: new Date().toISOString(),
         postsGenerated: 0
       });

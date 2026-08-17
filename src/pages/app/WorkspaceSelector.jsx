@@ -17,7 +17,7 @@ function WorkspaceSelector() {
 
     const fetchWorkspaces = async () => {
       try {
-        const q = query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid));
+        const q = query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid));
         const snapshot = await getDocs(q);
         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setWorkspaces(list);

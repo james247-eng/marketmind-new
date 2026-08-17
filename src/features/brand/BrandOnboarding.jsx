@@ -53,7 +53,7 @@ function BrandOnboarding() {
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
-  const [profile, setProfile] = useState(defaultProfile);
+  const [profile, setProfile] = useState({ ...defaultProfile, products: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -150,7 +150,7 @@ function BrandOnboarding() {
       setError('Product name and description are required.');
       return;
     }
-    if (profile.products.length >= 5) {
+    if ((profile.products || []).length >= 5) {
       setError('You can add up to 5 products or services.');
       return;
     }
@@ -201,7 +201,10 @@ function BrandOnboarding() {
         effectiveWorkspaceId = workspaceDoc.id;
       }
 
-      const result = await saveBrandProfile(effectiveWorkspaceId, profile);
+      const result = await saveBrandProfile(effectiveWorkspaceId, {
+        ...profile,
+        products: Array.isArray(profile.products) ? profile.products : []
+      });
 
       if (!result.success) {
         throw new Error(result.error || 'Unable to save brand profile.');
@@ -560,11 +563,11 @@ function BrandOnboarding() {
 
                     <section>
                       <h3>Products / Services</h3>
-                      {profile.products.length === 0 ? (
+                      {(profile.products || []).length === 0 ? (
                         <p>None added yet.</p>
                       ) : (
                         <ul className="product-summary-list">
-                          {profile.products.map((product, index) => (
+                          {(profile.products || []).map((product, index) => (
                             <li key={`${product.name}-${index}`}>
                               <strong>{product.name}</strong> — {product.description} {product.price && `(${product.price})`}
                             </li>

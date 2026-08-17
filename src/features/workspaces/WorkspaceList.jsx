@@ -29,7 +29,7 @@ function BusinessList() {
     try {
       const q = query(
         collection(db, COLLECTIONS.workspaces),
-        where('userId', '==', currentUser.uid)
+        where('ownerId', '==', currentUser.uid)
       );
       const querySnapshot = await getDocs(q);
       const businessList = querySnapshot.docs.map(doc => ({

@@ -1,7 +1,7 @@
 // ContentGenerator.jsx
 
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import COLLECTIONS from '../../lib/schema.js';
@@ -109,6 +109,7 @@ const parseGeneratedContent = (raw) => {
 function ContentGenerator() {
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const { currentUser }                   = useAuth();
+  const { workspaceId }                   = useParams();
   const [businesses, setBusinesses]       = useState([]);
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [loading, setLoading]             = useState(false);
@@ -147,12 +148,17 @@ function ContentGenerator() {
     // Fetch businesses
     (async () => {
       try {
-        const q = query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid));
+        const q = query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid));
         const snap = await getDocs(q);
         if (!isMounted.current) return;
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setBusinesses(list);
-        if (list.length > 0) setFormData(prev => ({ ...prev, businessId: list[0].id }));
+        if (list.length > 0) {
+          const selectedWorkspaceId = workspaceId && list.some(item => item.id === workspaceId)
+            ? workspaceId
+            : list[0].id;
+          setFormData(prev => ({ ...prev, businessId: selectedWorkspaceId }));
+        }
       } catch (err) { 
         console.error('Error fetching businesses:', err); 
       }
@@ -161,7 +167,7 @@ function ContentGenerator() {
     return () => {
       isMounted.current = false;
     };
-  }, [currentUser]);
+  }, [currentUser, workspaceId]);
 
   useEffect(() => {
     if (!currentUser || !formData.businessId) return;

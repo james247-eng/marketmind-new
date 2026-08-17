@@ -2,6 +2,7 @@
 // Connect and manage social media accounts
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import {
   getConnectedAccounts,
@@ -45,6 +46,7 @@ const PLATFORMS = [
 function SocialAccounts() {
   const [sidebarOpen, setSidebarOpen]         = useState(false);
   const { currentUser }                       = useAuth();
+  const { workspaceId: routeWorkspaceId }     = useParams();
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [loading, setLoading]                 = useState(true);
   // Tracks which platform card is mid-connect so we can show a spinner on it
@@ -134,13 +136,13 @@ function SocialAccounts() {
   useEffect(() => {
     if (!currentUser) return;
     (async () => {
-      const snap = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid)));
+      const snap = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid)));
       const list = snap.docs.map((item) => ({ id: item.id, ...item.data() }));
       setWorkspaces(list);
       const pendingWorkspace = sessionStorage.getItem('marketmind.oauthWorkspaceId');
-      if (list.length) setWorkspaceId(list.some((item) => item.id === pendingWorkspace) ? pendingWorkspace : list[0].id);
+      if (list.length) setWorkspaceId(list.some((item) => item.id === routeWorkspaceId) ? routeWorkspaceId : (list.some((item) => item.id === pendingWorkspace) ? pendingWorkspace : list[0].id));
     })();
-  }, [currentUser]);
+  }, [currentUser, routeWorkspaceId]);
 
   useEffect(() => { if (workspaceId) { fetchAccounts(); handleOAuthCallback(); } }, [workspaceId, fetchAccounts, handleOAuthCallback]);
 

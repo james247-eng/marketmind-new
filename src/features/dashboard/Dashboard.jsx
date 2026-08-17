@@ -2,6 +2,7 @@
 // Main analytics dashboard with performance metrics
 
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import COLLECTIONS from '../../lib/schema.js';
@@ -39,6 +40,7 @@ import './Dashboard.css';
 function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { currentUser } = useAuth();
+  const { workspaceId } = useParams();
   const [businesses, setBusinesses] = useState([]);
   const [selectedBusiness, setSelectedBusiness] = useState('');
   const [analytics, setAnalytics] = useState(null);
@@ -60,7 +62,7 @@ function Dashboard() {
     try {
       const q = query(
         collection(db, COLLECTIONS.workspaces),
-        where('userId', '==', currentUser.uid)
+        where('ownerId', '==', currentUser.uid)
       );
       const snapshot = await getDocs(q);
       const list = snapshot.docs.map(doc => ({
@@ -71,7 +73,7 @@ function Dashboard() {
       setBusinesses(list);
       
       if (list.length > 0) {
-        setSelectedBusiness(list[0].id);
+        setSelectedBusiness(workspaceId && list.some(item => item.id === workspaceId) ? workspaceId : list[0].id);
       }
     } catch (error) {
       console.error('Error loading businesses:', error);

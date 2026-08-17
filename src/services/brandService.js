@@ -22,6 +22,7 @@ export const saveBrandProfile = async (workspaceId, profileData) => {
     const docRef = doc(db, COLLECTIONS.brandProfile(workspaceId));
     await setDoc(docRef, {
       ...profileData,
+      products: Array.isArray(profileData.products) ? profileData.products : [],
       updatedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     });

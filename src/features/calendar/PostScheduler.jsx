@@ -2,7 +2,7 @@
 // Schedule posts to social media
 
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -32,6 +32,7 @@ const contentLabel = (item) => {
 function PostScheduler() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { currentUser } = useAuth();
+  const { workspaceId } = useParams();
 
   const [businesses,        setBusinesses]        = useState([]);
   const [selectedBusiness,  setSelectedBusiness]  = useState('');
@@ -55,15 +56,15 @@ function PostScheduler() {
     // Businesses
     (async () => {
       try {
-        const q = query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid));
+        const q = query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid));
         const snap = await getDocs(q);
         const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         setBusinesses(list);
-        if (list.length > 0) setSelectedBusiness(list[0].id);
+        if (list.length > 0) setSelectedBusiness(workspaceId && list.some(item => item.id === workspaceId) ? workspaceId : list[0].id);
       } catch (err) { console.error('Error loading businesses:', err); }
     })();
 
-  }, [currentUser]);
+  }, [currentUser, workspaceId]);
 
   // ─── Load content + scheduled posts when business changes ───────────────────
 

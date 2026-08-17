@@ -57,7 +57,7 @@ export const requestDataDeletion = async (email, facebookUserId = null) => {
 // Process data deletion (backend only)
 export const processDataDeletion = async (userId) => {
   try {
-    const workspaces = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', userId)));
+    const workspaces = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', userId)));
     for (const workspace of workspaces.docs) {
       for (const name of SUBCOLLECTIONS) await clearPath(COLLECTIONS[name](workspace.id));
       await deleteDoc(workspace.ref);

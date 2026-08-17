@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { logOut } from '../../services/authService.js';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
 import { db, auth } from '../../services/firebase.js';
@@ -37,6 +37,7 @@ function Settings() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { currentUser }               = useAuth();
   const navigate                      = useNavigate();
+  const { workspaceId }               = useParams();
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState('');
   const [success, setSuccess]         = useState('');
@@ -82,8 +83,9 @@ function Settings() {
         }
 
         // Get usage counters
-        const workspaces = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid)));
-        const usageSnap = workspaces.empty ? null : await getDoc(doc(db, COLLECTIONS.usageCounters(workspaces.docs[0].id), currentUser.uid));
+        const workspaces = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid)));
+        const workspaceDoc = workspaceId ? workspaces.docs.find((item) => item.id === workspaceId) : workspaces.docs[0];
+        const usageSnap = workspaceDoc ? await getDoc(doc(db, COLLECTIONS.usageCounters(workspaceDoc.id), currentUser.uid)) : null;
         if (usageSnap?.exists()) {
           const data = usageSnap.data();
           setUsage({

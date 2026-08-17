@@ -1,6 +1,6 @@
 // ContentHistory.jsx
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
@@ -48,6 +48,7 @@ const parseContent = (raw) => {
 function ContentHistory() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { currentUser } = useAuth();
+  const { workspaceId } = useParams();
   const [businesses, setBusinesses] = useState([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState('');
   const [historyItems, setHistoryItems] = useState([]);
@@ -73,13 +74,13 @@ function ContentHistory() {
 
     try {
       // 1. Fetch connected workspaces
-      const bizQuery = query(collection(db, COLLECTIONS.workspaces), where('userId', '==', currentUser.uid));
+      const bizQuery = query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid));
       const bizSnapshot = await getDocs(bizQuery);
       const bizList = bizSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setBusinesses(bizList);
 
       if (bizList.length > 0) {
-        setSelectedBusinessId(bizList[0].id);
+        setSelectedBusinessId(workspaceId && bizList.some(item => item.id === workspaceId) ? workspaceId : bizList[0].id);
       }
 
       // 2. Fetch linked social platform distribution channels
@@ -93,7 +94,7 @@ function ContentHistory() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, workspaceId]);
 
   const fetchHistory = useCallback(async () => {
     if (!currentUser || !selectedBusinessId) return;
