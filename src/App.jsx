@@ -24,6 +24,7 @@ import BrandProfile from './features/brand/BrandProfile';
 import LeadManager from './features/leads/LeadManager';
 import LeadCapturePage from './features/leads/LeadCapturePage';
 import EmailMarketing from './features/email/EmailMarketing';
+import Assistant from './features/assistant/Assistant';
 
 // Public Pages
 import LandingPage from './pages/marketing/LandingPage';
@@ -195,6 +196,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <EmailMarketing />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/app/:workspaceId/assistant"
+            element={
+              <ProtectedRoute>
+                <Assistant />
               </ProtectedRoute>
             }
           />

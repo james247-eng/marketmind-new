@@ -10,17 +10,16 @@ const GROQ_MODELS = [
   'meta-llama/llama-4-scout-17b-16e-instruct',
 ];
 
-const requestGroq = (model, systemPrompt, userPrompt, maxTokens) => {
+const requestGroq = (model, systemPrompt, userPrompt, maxTokens, conversationMessages = null) => {
   return new Promise((resolve, reject) => {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) return reject(new Error('Missing environment variable: GROQ_API_KEY'));
 
     const body = JSON.stringify({
       model,
-      messages:    [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userPrompt   },
-      ],
+      messages: conversationMessages
+        ? [{ role: 'system', content: systemPrompt }, ...conversationMessages]
+        : [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
       temperature: 0.85,   // slightly higher for more creative, human-feeling output
       max_tokens:  maxTokens,
     });
@@ -56,12 +55,12 @@ const requestGroq = (model, systemPrompt, userPrompt, maxTokens) => {
   });
 };
 
-const callGroq = async (systemPrompt, userPrompt, maxTokens = 2048) => {
+const callGroq = async (systemPrompt, userPrompt, maxTokens = 2048, conversationMessages = null) => {
   let lastError;
 
   for (const model of GROQ_MODELS) {
     try {
-      return await requestGroq(model, systemPrompt, userPrompt, maxTokens);
+      return await requestGroq(model, systemPrompt, userPrompt, maxTokens, conversationMessages);
     } catch (error) {
       lastError = error;
       console.warn(`Groq model ${model} failed: ${error.message}`);
@@ -237,7 +236,20 @@ exports.handler = async (event) => {
       recentPostExamples = [],
       topic,
       businessNiche,
+      systemPrompt: assistantSystemPrompt,
+      messages,
     } = JSON.parse(event.body);
+
+    if (type === 'assistant') {
+      const safeMessages = Array.isArray(messages)
+        ? messages.filter((message) => ['user', 'assistant'].includes(message?.role) && typeof message.content === 'string' && message.content.trim())
+        : [];
+      if (!assistantSystemPrompt || !safeMessages.length) {
+        return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Missing required fields: systemPrompt, messages' }) };
+      }
+      const response = await callGroq(assistantSystemPrompt, '', 3000, safeMessages);
+      return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, type: 'assistant', response }) };
+    }
 
     // ── Content generation ────────────────────────────────────────────────────
     if (type === 'generate') {
@@ -444,7 +456,7 @@ Return ONLY this JSON structure:
     return {
       statusCode: 400,
       headers: CORS,
-      body: JSON.stringify({ error: 'Invalid type. Must be "generate" or "research".' }),
+      body: JSON.stringify({ error: 'Invalid type. Must be "generate", "research", or "assistant".' }),
     };
 
   } catch (error) {

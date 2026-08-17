@@ -13,6 +13,7 @@ import {
   Crown,
   Users,
   Mail,
+  Bot,
   X
 } from 'lucide-react';
 
@@ -29,6 +30,7 @@ function Sidebar({ isOpen, onClose }) {
     { name: 'Social Accounts', icon: Link2, path: workspaceId ? `/app/${workspaceId}/social` : '/app' },
     { name: 'Leads', icon: Users, path: workspaceId ? `/app/${workspaceId}/leads` : '/app' },
     { name: 'Email', icon: Mail, path: workspaceId ? `/app/${workspaceId}/email` : '/app' },
+    { name: 'AI Assistant', icon: Bot, path: workspaceId ? `/app/${workspaceId}/assistant` : '/app' },
     { name: 'Settings', icon: Settings, path: workspaceId ? `/app/${workspaceId}/settings` : '/app' },
   ];
 
