@@ -1,37 +1,63 @@
-// schedulingService.js
-// Handles post scheduling
-
-import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDocs,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db } from './firebase.js';
 import COLLECTIONS from '../lib/schema.js';
 
-// Schedule a post
-export const schedulePost = async (postData) => {
+const createIdempotencyKey = (workspaceId, contentItemId, platform, scheduledAt) => {
+  const randomPart = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+  return `${workspaceId}:${contentItemId || 'manual'}:${platform}:${scheduledAt.getTime()}:${randomPart}`;
+};
+
+export const schedulePosts = async (workspaceId, jobs) => {
   try {
-    const workspaceId = postData.workspaceId || postData.businessId;
-    const docRef = await addDoc(collection(db, COLLECTIONS.publishingJobs(workspaceId)), {
-      ...postData,
-      status: 'scheduled',
-      createdAt: new Date().toISOString(),
+    const batch = writeBatch(db);
+    const jobIds = [];
+
+    jobs.forEach((job) => {
+      const jobRef = doc(collection(db, COLLECTIONS.publishingJobs(workspaceId)));
+      jobIds.push(jobRef.id);
+      batch.set(jobRef, {
+        contentItemId: job.contentItemId || null,
+        workspaceId,
+        platform: job.platform,
+        content: job.content,
+        mediaUrl: job.mediaUrl || null,
+        scheduledAt: Timestamp.fromDate(job.scheduledAt),
+        status: 'scheduled',
+        attempts: 0,
+        idempotencyKey: createIdempotencyKey(workspaceId, job.contentItemId, job.platform, job.scheduledAt),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      if (job.contentItemId) {
+        batch.update(doc(db, COLLECTIONS.contentItems(workspaceId), job.contentItemId), {
+          status: 'scheduled',
+          updatedAt: serverTimestamp(),
+        });
+      }
     });
-    return { success: true, postId: docRef.id };
+
+    await batch.commit();
+    return { success: true, jobIds };
   } catch (error) {
-    console.error('Error scheduling post:', error);
+    console.error('Error scheduling posts:', error);
     return { success: false, error: error.message };
   }
 };
 
-// Get scheduled posts — requires userId to satisfy Firestore security rules
-export const getScheduledPosts = async (businessId, userId) => {
+export const getScheduledPosts = async (workspaceId) => {
   try {
-    const q = query(
-      collection(db, COLLECTIONS.publishingJobs(businessId)),
-      where('userId',     '==', userId),      // ← required by security rules
-      where('businessId', '==', businessId),
-      orderBy('scheduledTime', 'asc')
-    );
-    const snapshot = await getDocs(q);
-    const posts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snapshot = await getDocs(collection(db, COLLECTIONS.publishingJobs(workspaceId)));
+    const posts = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    posts.sort((a, b) => (a.scheduledAt?.toMillis?.() || 0) - (b.scheduledAt?.toMillis?.() || 0));
     return { success: true, posts };
   } catch (error) {
     console.error('Error fetching scheduled posts:', error);
@@ -39,35 +65,29 @@ export const getScheduledPosts = async (businessId, userId) => {
   }
 };
 
-// Update post status
 export const updatePostStatus = async (workspaceId, postId, status, publishResults = null) => {
   try {
-    const updateData = {
-      status,
-      updatedAt: new Date().toISOString(),
-    };
-    if (publishResults) {
-      updateData.publishResults = publishResults;
-      updateData.publishedAt = new Date().toISOString();
-    }
-    await updateDoc(doc(db, COLLECTIONS.publishingJobs(workspaceId), postId), updateData);
+    const updates = { status, updatedAt: serverTimestamp() };
+    if (publishResults) updates.publishResults = publishResults;
+    await updateDoc(doc(db, COLLECTIONS.publishingJobs(workspaceId), postId), updates);
     return { success: true };
   } catch (error) {
-    console.error('Error updating post status:', error);
     return { success: false, error: error.message };
   }
 };
 
-// Cancel scheduled post
-export const cancelScheduledPost = async (workspaceId, postId) => {
+export const cancelScheduledPost = async (workspaceId, postId) => updatePostStatus(workspaceId, postId, 'cancelled');
+
+export const reschedulePost = async (workspaceId, postId, scheduledAt) => {
   try {
     await updateDoc(doc(db, COLLECTIONS.publishingJobs(workspaceId), postId), {
-      status: 'cancelled',
-      updatedAt: new Date().toISOString(),
+      scheduledAt: Timestamp.fromDate(scheduledAt),
+      status: 'scheduled',
+      attempts: 0,
+      updatedAt: serverTimestamp(),
     });
     return { success: true };
   } catch (error) {
-    console.error('Error cancelling post:', error);
     return { success: false, error: error.message };
   }
 };

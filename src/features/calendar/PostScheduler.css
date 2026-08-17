@@ -6,6 +6,42 @@
   gap: 24px;
 }
 
+.view-toggle { display: inline-flex; border: 1px solid var(--gray-200); border-radius: 8px; overflow: hidden; }
+.view-toggle button { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: white; color: var(--gray-700); }
+.view-toggle button.active { background: var(--primary); color: white; }
+.batch-section { margin-bottom: 24px; }
+.batch-items { display: grid; gap: 12px; }
+.batch-item, .manual-entry { padding: 14px; border: 1px solid var(--gray-200); border-radius: 8px; }
+.batch-item.selected { border-color: var(--primary); background: #faf8ff; }
+.content-choice { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.content-choice input { margin-top: 3px; }
+.content-choice span { display: grid; gap: 4px; }
+.content-choice small { color: var(--gray-700); line-height: 1.4; }
+.batch-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.batch-controls input, .batch-controls select, .manual-entry textarea, .reschedule-row input { width: 100%; padding: 10px; border: 1px solid var(--gray-300); border-radius: 6px; }
+.manual-entry { margin: 14px 0; }
+.manual-entry textarea { margin-top: 12px; resize: vertical; }
+.calendar-section { margin-top: 24px; }
+.calendar-header { display: flex; justify-content: space-between; align-items: center; }
+.calendar-header div { display: flex; gap: 6px; }
+.calendar-header button { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--gray-200); border-radius: 6px; background: white; }
+.calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.calendar-weekdays { margin-bottom: 8px; color: var(--gray-700); font-size: 12px; text-align: center; }
+.calendar-day { min-height: 68px; display: flex; flex-direction: column; justify-content: space-between; padding: 8px; border: 1px solid var(--gray-200); border-radius: 6px; background: white; text-align: left; }
+.calendar-day.selected { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.calendar-day small { align-self: flex-end; min-width: 20px; padding: 2px 6px; border-radius: 10px; background: var(--primary); color: white; text-align: center; }
+.day-posts { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--gray-200); }
+.posts-list, .day-posts { display: grid; gap: 12px; }
+.post-card { padding: 14px; border: 1px solid var(--gray-200); border-radius: 8px; }
+.post-time, .post-footer, .post-actions-inline, .reschedule-row { display: flex; align-items: center; gap: 8px; }
+.post-footer { justify-content: space-between; }
+.platform-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: var(--gray-900); color: white; font-size: 10px; font-weight: 700; }
+.post-preview { margin: 12px 0; color: var(--gray-700); line-height: 1.5; }
+.post-actions-inline button { display: flex; align-items: center; gap: 4px; padding: 6px 9px; font-size: 12px; }
+.reschedule-row { margin-top: 12px; }
+.reschedule-row .btn-primary { padding: 10px 14px; }
+.status-cancelled { background: var(--gray-200); color: var(--gray-700); }
+
 .scheduler-section {
   background-color: white;
   border: 1px solid var(--gray-200);
@@ -215,4 +251,9 @@
   .form-row {
     grid-template-columns: 1fr;
   }
+
+  .batch-controls { grid-template-columns: 1fr; }
+  .calendar-day { min-height: 52px; }
+  .calendar-weekdays { font-size: 10px; }
+  .post-footer { align-items: flex-start; flex-direction: column; }
 }
