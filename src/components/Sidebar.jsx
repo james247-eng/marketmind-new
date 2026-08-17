@@ -11,6 +11,7 @@ import {
   Link2, 
   Settings,
   Crown,
+  Users,
   X
 } from 'lucide-react';
 
@@ -25,6 +26,7 @@ function Sidebar({ isOpen, onClose }) {
     { name: 'Brand Setup', icon: Crown, path: workspaceId ? `/app/${workspaceId}/brand` : '/app' },
     { name: 'Schedule Posts', icon: Calendar, path: workspaceId ? `/app/${workspaceId}/calendar` : '/app' },
     { name: 'Social Accounts', icon: Link2, path: workspaceId ? `/app/${workspaceId}/social` : '/app' },
+    { name: 'Leads', icon: Users, path: workspaceId ? `/app/${workspaceId}/leads` : '/app' },
     { name: 'Settings', icon: Settings, path: workspaceId ? `/app/${workspaceId}/settings` : '/app' },
   ];
 

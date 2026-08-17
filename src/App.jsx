@@ -21,6 +21,8 @@ import SocialAccounts from './features/social-connections/SocialAccounts';
 import Settings from './features/settings/Settings';
 import BrandOnboarding from './features/brand/BrandOnboarding';
 import BrandProfile from './features/brand/BrandProfile';
+import LeadManager from './features/leads/LeadManager';
+import LeadCapturePage from './features/leads/LeadCapturePage';
 
 // Public Pages
 import LandingPage from './pages/marketing/LandingPage';
@@ -46,6 +48,7 @@ function App() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/data-deletion" element={<DataDeletion />} />
+          <Route path="/capture/:workspaceId" element={<LeadCapturePage />} />
           
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
@@ -175,6 +178,15 @@ function App() {
                 <Dashboard />
               </ProtectedRoute>
             } 
+          />
+
+          <Route
+            path="/app/:workspaceId/leads"
+            element={
+              <ProtectedRoute>
+                <LeadManager />
+              </ProtectedRoute>
+            }
           />
 
           {/* 404 */}
