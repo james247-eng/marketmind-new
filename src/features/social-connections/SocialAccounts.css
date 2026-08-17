@@ -38,7 +38,14 @@
 }
 
 .platform-icon {
-  font-size: 32px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  color: white;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .platform-info h3 {
@@ -120,3 +127,9 @@
     grid-template-columns: 1fr;
   }
 }
+
+.platform-info span:not(.platform-icon) { color: var(--gray-500); font-size: 12px; }
+.account-row-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-top:1px solid var(--gray-100); }
+.account-row-item strong,.account-row-item small { display:block; }.account-row-item strong { color:var(--gray-800); font-size:14px; }.account-row-item small { margin-top:4px; color:var(--gray-500); font-size:12px; }
+.account-actions button { display:inline-flex; align-items:center; gap:6px; padding:7px 9px; border:1px solid var(--gray-300); border-radius:7px; background:white; color:var(--gray-700); cursor:pointer; }.account-actions button:hover { color:var(--danger); border-color:#fecaca; }
+.empty-state { display:flex; flex-direction:column; align-items:center; gap:12px; margin-bottom:22px; padding:30px; border:1px dashed var(--gray-300); border-radius:8px; background:white; color:var(--gray-500); text-align:center; }.empty-state p { max-width:560px; margin:0; }

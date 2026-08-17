@@ -30,6 +30,8 @@ const PLATFORM_CONFIGS = {
   snapchat:  { tokenEndpoint: 'https://accounts.snapchat.com/accounts/oauth2/token' },
 };
 
+const PLATFORM_SCOPES = { facebook: ['pages_manage_posts', 'pages_read_engagement', 'instagram_basic', 'instagram_content_publish', 'pages_show_list'], instagram: ['instagram_basic', 'instagram_content_publish'], tiktok: ['user.info.basic', 'video.publish', 'video.upload'], twitter: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'], youtube: ['youtube.upload', 'youtube.readonly', 'userinfo.email'], linkedin: ['openid', 'profile', 'email', 'w_member_social'] };
+
 const getClientSecret = (platform) => {
   const key    = platform === 'instagram' ? 'facebook' : platform;
   const envVar = `${key.toUpperCase()}_CLIENT_SECRET`;
@@ -67,6 +69,7 @@ async function exchangeFacebookToken(clientId, clientSecret, code, redirectUri) 
   // 3. For each page, structure details and attempt to check for an attached Instagram Business account
   for (const page of rawPages) {
     processedAccounts.push({
+      platform: 'facebook',
       accountId: page.id,
       accountName: page.name || 'Unnamed Facebook Page',
       accessToken: page.access_token, // Page-scoped perpetual tokens
@@ -79,6 +82,7 @@ async function exchangeFacebookToken(clientId, clientSecret, code, redirectUri) 
       
       if (igRes.data?.instagram_business_account?.id) {
         processedAccounts.push({
+          platform: 'instagram',
           accountId: igRes.data.instagram_business_account.id,
           accountName: `${page.name} (Linked Instagram Profile)`,
           accessToken: page.access_token, // Instagram operations route through Page tokens
@@ -123,7 +127,7 @@ async function exchangeTikTokToken(clientId, clientSecret, code, redirectUri) {
     console.warn('[oauthExchange] Failed to query TikTok user context profiles info:', err.message);
   }
 
-  return { accountId: open_id, accountName, accessToken: access_token, refreshToken: refresh_token };
+  return { accountId: open_id, accountName, accessToken: access_token, refreshToken: refresh_token, expiresIn: tokenRes.data.expires_in };
 }
 
 async function exchangeTwitterToken(clientId, clientSecret, code, redirectUri) {
@@ -152,7 +156,7 @@ async function exchangeTwitterToken(clientId, clientSecret, code, redirectUri) {
     console.warn('[oauthExchange] Failed to fetch Twitter user profile metrics:', err.message);
   }
 
-  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token };
+  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token, expiresIn: tokenRes.data.expires_in };
 }
 
 async function exchangeYouTubeToken(clientId, clientSecret, code, redirectUri) {
@@ -183,7 +187,7 @@ async function exchangeYouTubeToken(clientId, clientSecret, code, redirectUri) {
     console.warn('[oauthExchange] Failed to fetch YouTube channel profile metrics:', err.message);
   }
 
-  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token };
+  return { accountId, accountName, accessToken: access_token, refreshToken: refresh_token, expiresIn: tokenRes.data.expires_in };
 }
 
 async function exchangeLinkedInToken(clientId, clientSecret, code, redirectUri) {
@@ -212,7 +216,7 @@ async function exchangeLinkedInToken(clientId, clientSecret, code, redirectUri) 
     console.warn('[oauthExchange] Failed to query userinfo profile for LinkedIn:', err.message);
   }
 
-  return { accountId, accountName, accessToken: access_token };
+  return { accountId, accountName, accessToken: access_token, expiresIn: tokenRes.data.expires_in };
 }
 
 async function exchangePinterestToken(clientId, clientSecret, code, redirectUri) {
@@ -292,6 +296,10 @@ exports.handler = async (event) => {
     if (!PLATFORM_CONFIGS[platform]) {
       return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: `Requested OAuth target platform options not supported: ${platform}` }) };
     }
+    const workspaceSnapshot = await db.collection(COLLECTIONS.workspaces).doc(workspaceId).get();
+    if (!workspaceSnapshot.exists || workspaceSnapshot.data().ownerId !== decoded.uid) {
+      return { statusCode: 403, headers: CORS, body: JSON.stringify({ error: 'You do not have access to this workspace' }) };
+    }
 
     const clientId     = getClientId(platform);
     const clientSecret = getClientSecret(platform);
@@ -327,17 +335,21 @@ exports.handler = async (event) => {
     const accounts = exchangeResult.accounts || [exchangeResult];
     const metadata = [];
     for (const account of accounts) {
+      const accountPlatform = account.platform || exchangeResult.platform || platform;
+      const expiresIn = account.expiresIn || exchangeResult.expiresIn;
       await db.collection(COLLECTIONS.socialConnections(workspaceId)).add({
-        workspaceId,
-        userId: decoded.uid,
-        platform: exchangeResult.platform || platform,
-        accountId: account.accountId,
+        platform: accountPlatform,
+        externalAccountId: account.accountId,
         accountName: account.accountName,
-        accessToken: encryptToken(account.accessToken),
-        refreshToken: encryptToken(account.refreshToken),
+        scopes: account.scopes || exchangeResult.scopes || PLATFORM_SCOPES[accountPlatform] || [],
+        encryptedAccessTokenRef: encryptToken(account.accessToken),
+        encryptedRefreshTokenRef: encryptToken(account.refreshToken),
+        tokenExpiresAt: expiresIn ? admin.firestore.Timestamp.fromMillis(Date.now() + Number(expiresIn) * 1000) : null,
+        status: 'connected',
         connectedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-      metadata.push({ accountId: account.accountId, accountName: account.accountName, platform: exchangeResult.platform || platform });
+      metadata.push({ accountId: account.accountId, accountName: account.accountName, platform: accountPlatform });
     }
     return {
       statusCode: 200,

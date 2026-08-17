@@ -26,10 +26,12 @@ exports.handler = async (event) => {
     const { platform, accountId, workspaceId } = payload;
     if (!platform || !accountId || !workspaceId) throw new Error('platform, accountId and workspaceId are required');
 
-    const snapshot = await db.collection(COLLECTIONS.socialConnections(workspaceId)).where('userId', '==', decoded.uid).where('platform', '==', platform).where('accountId', '==', accountId).limit(1).get();
+    const workspace = await db.collection(COLLECTIONS.workspaces).doc(workspaceId).get();
+    if (!workspace.exists || workspace.data().ownerId !== decoded.uid) throw new Error('Workspace access denied');
+    const snapshot = await db.collection(COLLECTIONS.socialConnections(workspaceId)).where('platform', '==', platform).where('externalAccountId', '==', accountId).where('status', '==', 'connected').limit(1).get();
     if (snapshot.empty) throw new Error('Connected account not found');
     const account = snapshot.docs[0].data();
-    const result = await publishToPlatform(platform, { ...payload, accountId: account.accountId, accessToken: decryptToken(account.accessToken) });
+    const result = await publishToPlatform(platform, { ...payload, accountId: account.externalAccountId, accessToken: decryptToken(account.encryptedAccessTokenRef) });
     return { statusCode: 200, headers: CORS, body: JSON.stringify({ success: true, postId: result.postId }) };
   } catch (error) {
     return { statusCode: 500, headers: CORS, body: JSON.stringify({ success: false, error: error.message }) };

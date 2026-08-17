@@ -1,339 +1,48 @@
-// SocialAccounts.jsx
-// Connect and manage social media accounts
-
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext.jsx';
-import {
-  getConnectedAccounts,
-  disconnectAccount,
-  connectFacebook,
-  connectTikTok,
-  connectTwitter,
-  connectYouTube,
-  handleFacebookCallback,
-  handleTikTokCallback,
-  handleTwitterCallback,
-  handleYouTubeCallback,
-} from '../../services/socialMediaService';
+import { AlertCircle, CheckCircle, Link2, Loader, RefreshCw, Unplug } from 'lucide-react';
 import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
-import { Link2, X, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { connectFacebook, connectLinkedIn, connectTikTok, connectTwitter, connectYouTube, disconnectSocialAccount, getSocialConnections, handleFacebookCallback, handleLinkedInCallback, handleTikTokCallback, handleTwitterCallback, handleYouTubeCallback } from '../../services/socialMediaService.js';
 import './SocialAccounts.css';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../services/firebase.js';
-import COLLECTIONS from '../../lib/schema.js';
-
-// Maps the `state` param we set in each connect* function to its callback handler.
-// This is the single source of truth for callback routing — no more string-sniffing
-// on window.location.search.
-const CALLBACK_HANDLERS = {
-  facebook:  handleFacebookCallback,
-  instagram: handleFacebookCallback, // Instagram auth flows through Facebook OAuth
-  tiktok:    handleTikTokCallback,
-  twitter:   handleTwitterCallback,
-  youtube:   handleYouTubeCallback,
-};
 
 const PLATFORMS = [
-  { id: 'facebook',  name: 'Facebook',   icon: '📘', color: '#1877F2' },
-  { id: 'instagram', name: 'Instagram',  icon: '📷', color: '#E4405F' },
-  { id: 'twitter',   name: 'Twitter/X',  icon: '🐦', color: '#1DA1F2' },
-  { id: 'tiktok',    name: 'TikTok',     icon: '🎵', color: '#000000' },
-  { id: 'youtube',   name: 'YouTube',    icon: '▶️', color: '#FF0000' },
+  { id: 'facebook', name: 'Facebook', icon: 'FB', color: '#1877F2' }, { id: 'instagram', name: 'Instagram', icon: 'IG', color: '#E4405F' },
+  { id: 'twitter', name: 'Twitter/X', icon: 'X', color: '#1DA1F2' }, { id: 'tiktok', name: 'TikTok', icon: 'TT', color: '#111827' },
+  { id: 'linkedin', name: 'LinkedIn', icon: 'IN', color: '#0077B5' }, { id: 'youtube', name: 'YouTube', icon: 'YT', color: '#FF0000' },
 ];
+const CALLBACKS = { facebook: handleFacebookCallback, instagram: handleFacebookCallback, twitter: handleTwitterCallback, tiktok: handleTikTokCallback, linkedin: handleLinkedInCallback, youtube: handleYouTubeCallback };
+const asDate = (value) => value?.toDate?.() || (value ? new Date(value) : null);
 
 function SocialAccounts() {
-  const [sidebarOpen, setSidebarOpen]         = useState(false);
-  const { currentUser }                       = useAuth();
-  const { workspaceId: routeWorkspaceId }     = useParams();
-  const [connectedAccounts, setConnectedAccounts] = useState([]);
-  const [loading, setLoading]                 = useState(true);
-  // Tracks which platform card is mid-connect so we can show a spinner on it
-  const [connectingPlatform, setConnectingPlatform] = useState(null);
-  const [error, setError]                     = useState('');
-  const [success, setSuccess]                 = useState('');
-  const [workspaceId, setWorkspaceId]         = useState('');
-  const [workspaces, setWorkspaces]           = useState([]);
-  
-  // Guard reference to prevent race conditions during OAuth callback processing mounts
-  const callbackProcessed = useRef(false);
-
-  // ─── Fetch accounts ──────────────────────────────────────────────────────────
-
-  const fetchAccounts = useCallback(async () => {
-    if (!currentUser) return;
-    setLoading(true);
-    try {
-      const result = await getConnectedAccounts(currentUser.uid, workspaceId);
-      if (result && result.success) {
-        setConnectedAccounts(result.accounts || []);
-      } else {
-        setError('Failed to load accounts. Please refresh the page.');
-      }
-    } catch (err) {
-      console.error('Error fetching accounts:', err);
-      setError('An error occurred while loading connected channels.');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, workspaceId]);
-
-  // ─── OAuth callback handling ─────────────────────────────────────────────────
-  // Runs once on mount. Reads `code` and `state` from the URL query string.
-  // `state` is set explicitly by each connect* function in socialMediaService.js
-  // so we always know exactly which platform is returning.
-
-  const handleOAuthCallback = useCallback(async () => {
-    const params = new URLSearchParams(window.location.search);
-    const code   = params.get('code');
-    const state  = params.get('state'); // e.g. "facebook", "twitter", "youtube"
-
-    // No code = not a callback, nothing to do
-    if (!code) return;
-
-    // Auth hasn't loaded yet — the effect will re-run when currentUser is set
-    if (!currentUser) return;
-
-    // Prevent multi-triggering hooks in strict or rapid mounting lifecycles
-    if (callbackProcessed.current) return;
-    callbackProcessed.current = true;
-
-    const handler = CALLBACK_HANDLERS[state];
-
-    if (!handler) {
-      setError(
-        `Unrecognised OAuth callback (state="${state}"). ` +
-        'Please try connecting the account again.'
-      );
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    setConnectingPlatform(state);
-    setLoading(true);
-
-    try {
-      const result = await handler(code, currentUser.uid, workspaceId);
-
-      if (result && result.success) {
-        setSuccess(`${formatPlatformName(state)} account connected successfully!`);
-        await fetchAccounts();
-      } else {
-        setError(result?.error || `Failed to connect ${formatPlatformName(state)} account.`);
-      }
-    } catch (err) {
-      console.error('OAuth callback execution error:', err);
-      setError(`A system network exception blocked the ${formatPlatformName(state)} handshake.`);
-    } finally {
-      // Clean the URL so a page refresh doesn't re-attempt the exchange
-      window.history.replaceState({}, document.title, window.location.pathname);
-      setConnectingPlatform(null);
-      setLoading(false);
-    }
-  }, [currentUser, fetchAccounts, workspaceId]);
-
+  const { currentUser } = useAuth();
+  const { workspaceId: routeWorkspaceId } = useParams();
+  const workspaceId = routeWorkspaceId || sessionStorage.getItem('marketmind.oauthWorkspaceId') || '';
+  const [sidebarOpen, setSidebarOpen] = useState(false); const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true); const [connecting, setConnecting] = useState(''); const [error, setError] = useState(''); const [success, setSuccess] = useState('');
+  const processed = useRef(false);
+  const load = useCallback(async () => {
+    if (!workspaceId) return; setLoading(true); const result = await getSocialConnections(workspaceId);
+    if (result.success) setAccounts(result.accounts.filter((account) => account.status !== 'disconnected')); else setError(result.error || 'Unable to load social connections.'); setLoading(false);
+  }, [workspaceId]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    if (!currentUser) return;
-    (async () => {
-      const snap = await getDocs(query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid)));
-      const list = snap.docs.map((item) => ({ id: item.id, ...item.data() }));
-      setWorkspaces(list);
-      const pendingWorkspace = sessionStorage.getItem('marketmind.oauthWorkspaceId');
-      if (list.length) setWorkspaceId(list.some((item) => item.id === routeWorkspaceId) ? routeWorkspaceId : (list.some((item) => item.id === pendingWorkspace) ? pendingWorkspace : list[0].id));
-    })();
-  }, [currentUser, routeWorkspaceId]);
-
-  useEffect(() => { if (workspaceId) { fetchAccounts(); handleOAuthCallback(); } }, [workspaceId, fetchAccounts, handleOAuthCallback]);
-
-  // Auto-clear alerts after 5 seconds
-  useEffect(() => {
-    if (!error && !success) return;
-    const timer = setTimeout(() => { setError(''); setSuccess(''); }, 5000);
-    return () => clearTimeout(timer);
-  }, [error, success]);
-
-  // ─── Connect / disconnect ─────────────────────────────────────────────────────
-
-  const handleConnect = (platformId) => {
-    setError('');
-    setSuccess('');
-    if (!workspaceId) { setError('Select a workspace before connecting an account.'); return; }
-    sessionStorage.setItem('marketmind.oauthWorkspaceId', workspaceId);
-
-    switch (platformId) {
-      case 'facebook':
-      case 'instagram':
-        connectFacebook();   // Both use the Facebook OAuth flow
-        break;
-      case 'tiktok':
-        connectTikTok();
-        break;
-      case 'twitter':
-        connectTwitter();
-        break;
-      case 'youtube':
-        connectYouTube();
-        break;
-      default:
-        setError(`${formatPlatformName(platformId)} is not supported yet.`);
-    }
-  };
-
-  const handleDisconnect = async (accountId, platformName) => {
-    if (!confirm(`Disconnect your ${platformName} account?`)) return;
-
-    try {
-      const result = await disconnectAccount(workspaceId, accountId);
-      if (result && result.success) {
-        setSuccess(`${platformName} account disconnected.`);
-        await fetchAccounts();
-      } else {
-        setError(`Failed to disconnect ${platformName} account.`);
-      }
-    } catch (err) {
-      console.error('Account disconnection error:', err);
-      setError(`An unexpected error blocked removing your ${platformName} account.`);
-    }
-  };
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-  const getAccountsForPlatform = (platformId) =>
-    connectedAccounts.filter(acc => acc.platform === platformId);
-
-  const isConnected = (platformId) =>
-    connectedAccounts.some(acc => acc.platform === platformId);
-
-  // ─── Render ───────────────────────────────────────────────────────────────────
-
-  return (
-    <div className="app">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main className="main-content">
-        <Header onMenuClick={() => setSidebarOpen(true)} />
-        <div className="content-area">
-
-          <div className="page-header">
-            <div>
-              <h1>Social Accounts</h1>
-              <p>Connect your social media platforms to start posting</p>
-            </div>
-          </div>
-          {workspaces.length > 1 && (
-            <select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}>
-              {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-            </select>
-          )}
-
-          {error && (
-            <div className="alert alert-error" role="alert">
-              <AlertCircle size={18} />
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="alert alert-success" role="status">
-              <CheckCircle size={18} />
-              {success}
-            </div>
-          )}
-
-          {loading && connectedAccounts.length === 0 ? (
-            <div className="loading-state">
-              <Loader size={20} className="spin" />
-              {connectingPlatform
-                ? `Connecting ${formatPlatformName(connectingPlatform)}…`
-                : 'Loading accounts…'}
-            </div>
-          ) : (
-            <div className="platforms-grid">
-              {PLATFORMS.map(platform => {
-                const platformAccounts = getAccountsForPlatform(platform.id);
-                const connected        = platformAccounts.length > 0;
-                const isConnecting     = connectingPlatform === platform.id;
-
-                return (
-                  <div
-                    key={platform.id}
-                    className={`platform-card${connected ? ' platform-card--connected' : ''}`}
-                  >
-                    <div className="platform-header">
-                      <div className="platform-info">
-                        <span className="platform-icon">{platform.icon}</span>
-                        <div>
-                          <h3>{platform.name}</h3>
-                          {!connected && (
-                            <span className="account-status-disconnected">Not connected</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Support mapping through multiple accounts/pages within the same platform type */}
-                    {connected && (
-                      <div className="connected-accounts-list">
-                        {platformAccounts.map((account) => (
-                          <div key={account.id || account.accountId} className="account-row-item">
-                            <div className="account-meta-details">
-                              <CheckCircle size={16} className="connected-icon" />
-                              <span className="account-name">{account.accountName || 'Connected Channel'}</span>
-                            </div>
-                            <button
-                              className="btn-row-disconnect"
-                              onClick={() => handleDisconnect(account.id, platform.name)}
-                              title={`Disconnect ${account.accountName}`}
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="platform-footer">
-                      {!connected && (
-                        <button
-                          className="btn-connect"
-                          style={{ backgroundColor: platform.color }}
-                          onClick={() => handleConnect(platform.id)}
-                          disabled={isConnecting}
-                        >
-                          {isConnecting
-                            ? <Loader size={16} className="spin" />
-                            : <Link2 size={16} />}
-                          {isConnecting ? 'Connecting…' : `Connect ${platform.name}`}
-                        </button>
-                      )}
-                      {connected && (
-                        <button
-                          className="btn-connect-more"
-                          onClick={() => handleConnect(platform.id)}
-                          disabled={isConnecting}
-                        >
-                          <Link2 size={14} />
-                          Connect Another Page
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-        </div>
-      </main>
-    </div>
-  );
+    if (!currentUser || !workspaceId || processed.current) return;
+    const params = new URLSearchParams(window.location.search); const code = params.get('code'); const rawState = params.get('state'); if (!code) return;
+    const [platform, stateWorkspace] = String(rawState || '').split(':'); const targetWorkspace = stateWorkspace || sessionStorage.getItem('marketmind.oauthWorkspaceId'); const handler = CALLBACKS[platform];
+    if (!handler || targetWorkspace !== workspaceId) { setError('OAuth callback did not match this workspace.'); return; }
+    processed.current = true; setConnecting(platform); handler(code, currentUser.uid, workspaceId).then((result) => { if (result.success) { setSuccess(`${platform} connected successfully.`); load(); } else setError(result.error || 'Connection failed.'); }).catch((err) => setError(err.message)).finally(() => { window.history.replaceState({}, document.title, window.location.pathname); setConnecting(''); });
+  }, [currentUser, load, workspaceId]);
+  const connect = (platform) => { setError(''); setConnecting(platform); sessionStorage.setItem('marketmind.oauthWorkspaceId', workspaceId); try { ({ facebook: connectFacebook, instagram: (id) => connectFacebook(id, 'instagram'), twitter: connectTwitter, tiktok: connectTikTok, linkedin: connectLinkedIn, youtube: connectYouTube }[platform])(workspaceId); } catch (err) { setError(err.message); setConnecting(''); } };
+  const disconnect = async (account) => { if (!confirm(`Disconnect ${account.accountName || account.platform}?`)) return; const result = await disconnectSocialAccount(workspaceId, account.id); if (result.success) { setSuccess('Account disconnected.'); load(); } else setError(result.error || 'Unable to disconnect account.'); };
+  const isExpired = (account) => { const date = asDate(account.tokenExpiresAt); return date && !Number.isNaN(date.getTime()) && date <= new Date(); };
+  const connectedPlatforms = new Set(accounts.map((account) => account.platform));
+  return <div className="app"><Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} /><main className="main-content"><Header onMenuClick={() => setSidebarOpen(true)} /><div className="content-area">
+    <div className="page-header"><div><h1>Social Connections</h1><p>Connect your channels to schedule and publish from Teamly AI.</p></div></div>
+    {error && <div className="alert alert-error"><AlertCircle size={18} />{error}</div>}{success && <div className="alert alert-success"><CheckCircle size={18} />{success}</div>}
+    {!loading && accounts.length === 0 && <div className="empty-state"><Link2 size={42} /><p>Connect your social media accounts to start scheduling and publishing content directly from Teamly AI.</p></div>}
+    {loading ? <div className="loading-state"><Loader size={22} className="spin" />Loading connections...</div> : <div className="platforms-grid">{PLATFORMS.map((platform) => { const connected = accounts.filter((account) => account.platform === platform.id); return <section className="platform-card" key={platform.id}><div className="platform-header"><div className="platform-info"><span className="platform-icon" style={{ backgroundColor: platform.color }}>{platform.icon}</span><div><h3>{platform.name}</h3><span>{connected.length ? `${connected.length} connected` : 'Not connected'}</span></div></div></div>{connected.map((account) => { const expired = isExpired(account); const date = asDate(account.connectedAt); return <div className="account-row-item" key={account.id}><div><strong>{account.accountName || 'Connected account'}</strong><small>{expired ? 'Expired' : 'Connected'}{date ? ` · ${date.toLocaleDateString()}` : ''}</small></div><div className="account-actions">{expired ? <button onClick={() => connect(platform.id)} disabled={!!connecting}><RefreshCw size={15} />Reconnect</button> : <button onClick={() => disconnect(account)}><Unplug size={15} />Disconnect</button>}</div></div>; })}<div className="platform-footer">{!connected.length && <button className="btn-connect" style={{ backgroundColor: platform.color }} onClick={() => connect(platform.id)} disabled={!!connecting}><Link2 size={16} />{connecting === platform.id ? 'Connecting...' : `Connect ${platform.name}`}</button>}</div></section>; })}</div>}
+  </div></main></div>;
 }
-
-// Capitalises the first letter for display in messages
-function formatPlatformName(platformId) {
-  return platformId
-    ? platformId.charAt(0).toUpperCase() + platformId.slice(1)
-    : 'Unknown';
-}
-
 export default SocialAccounts;

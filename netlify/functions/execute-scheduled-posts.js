@@ -53,14 +53,15 @@ exports.handler = async () => {
         const accountSnapshot = await firestore
           .collection(COLLECTIONS.socialConnections(workspaceId))
           .where('platform', '==', claimed.platform)
+          .where('status', '==', 'connected')
           .limit(1)
           .get();
         if (accountSnapshot.empty) throw new Error(`Platform '${claimed.platform}' is not connected`);
 
         const account = accountSnapshot.docs[0].data();
         const published = await publishToPlatform(claimed.platform, {
-          accountId: account.accountId,
-          accessToken: decryptToken(account.accessToken),
+          accountId: account.externalAccountId,
+          accessToken: decryptToken(account.encryptedAccessTokenRef),
           content: claimed.content,
           mediaUrl: claimed.mediaUrl || null,
         });

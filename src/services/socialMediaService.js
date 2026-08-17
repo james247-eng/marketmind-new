@@ -4,7 +4,7 @@
 // ALL outbound HTTP to external APIs goes through Netlify Functions.
 // Firebase is used ONLY for Firestore reads/writes.
 
-import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase';
 import { auth } from './firebase';
 import COLLECTIONS from '../lib/schema.js';
@@ -66,13 +66,13 @@ export const postToYouTube = async (accountId, videoUrl, title, description, wor
 
 // ─── Account management (Firestore Only) ──────────────────────────────────────
 
-export const getConnectedAccounts = async (_userId, workspaceId) => {
+export const getSocialConnections = async (workspaceId) => {
   try {
     const q = query(collection(db, COLLECTIONS.socialConnections(workspaceId)));
     const snapshot = await getDocs(q);
     const accounts = snapshot.docs.map(d => {
       const data = d.data();
-      return { id: d.id, workspaceId, userId: data.userId, platform: data.platform, accountId: data.accountId, accountName: data.accountName, connectedAt: data.connectedAt };
+      return { id: d.id, workspaceId, platform: data.platform, accountId: data.externalAccountId, externalAccountId: data.externalAccountId, accountName: data.accountName, scopes: data.scopes || [], tokenExpiresAt: data.tokenExpiresAt, status: data.status || 'connected', connectedAt: data.connectedAt };
     });
     return { success: true, accounts };
   } catch (err) {
@@ -81,9 +81,22 @@ export const getConnectedAccounts = async (_userId, workspaceId) => {
   }
 };
 
-export const disconnectAccount = async (workspaceId, accountDocId) => {
+export const getConnectedAccounts = async (_userId, workspaceId) => {
+  const result = await getSocialConnections(workspaceId);
+  if (!result.success) return result;
+  const now = new Date();
+  return {
+    ...result,
+    accounts: result.accounts.filter((account) => {
+      const expiresAt = account.tokenExpiresAt?.toDate?.() || (account.tokenExpiresAt ? new Date(account.tokenExpiresAt) : null);
+      return account.status === 'connected' && (!expiresAt || expiresAt > now);
+    }),
+  };
+};
+
+export const disconnectSocialAccount = async (workspaceId, accountDocId) => {
   try {
-    await deleteDoc(doc(db, COLLECTIONS.socialConnections(workspaceId), accountDocId));
+    await updateDoc(doc(db, COLLECTIONS.socialConnections(workspaceId), accountDocId), { status: 'disconnected', updatedAt: serverTimestamp() });
     return { success: true };
   } catch (err) {
     console.error('Error deleting account from firestore:', err);
@@ -93,32 +106,41 @@ export const disconnectAccount = async (workspaceId, accountDocId) => {
 
 // ─── OAuth Trigger Redirects ──────────────────────────────────────────────────
 
-export const connectFacebook = () => {
+const oauthState = (platform, workspaceId) => encodeURIComponent(`${platform}:${workspaceId}`);
+
+export const connectFacebook = (workspaceId, platform = 'facebook') => {
   const fbAppId = '406853755355605'; 
   const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,pages_show_list';
-  const url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=facebook`;
+  const url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=${oauthState(platform, workspaceId)}`;
   window.location.href = url;
 };
 
-export const connectTikTok = () => {
+export const connectTikTok = (workspaceId) => {
   const clientKey = 'awmq60b37f3pbeon'; 
   const scope = 'user.info.basic,video.publish,video.upload';
-  const url = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${encodeURIComponent(scope)}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=tiktok`;
+  const url = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${encodeURIComponent(scope)}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${oauthState('tiktok', workspaceId)}`;
   window.location.href = url;
 };
 
-export const connectTwitter = () => {
+export const connectTwitter = (workspaceId) => {
   const clientID = 'WUp3NXZ3YTNvMG5lOEdKcGstclU6MTpjaA'; 
   const scope = 'tweet.read tweet.write users.read offline.access';
-  const url = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=twitter&code_challenge=challenge&code_challenge_method=plain`;
+  const url = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=${oauthState('twitter', workspaceId)}&code_challenge=challenge&code_challenge_method=plain`;
   window.location.href = url;
 };
 
-export const connectYouTube = () => {
+export const connectYouTube = (workspaceId) => {
   const clientId = '226296180373-c82p189onp26g5r93u2p6cbeehb6m794.apps.googleusercontent.com';
   const scope = 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/userinfo.email';
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(scope)}&state=youtube&access_type=offline&prompt=select_account`;
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${oauthState('youtube', workspaceId)}&access_type=offline&prompt=select_account`;
   window.location.href = url;
+};
+
+export const connectLinkedIn = (workspaceId) => {
+  const clientId = import.meta.env.VITE_LINKEDIN_CLIENT_ID;
+  if (!clientId) throw new Error('LinkedIn client ID is not configured');
+  const scope = 'openid profile email w_member_social';
+  window.location.href = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=${oauthState('linkedin', workspaceId)}`;
 };
 
 // ─── OAuth Return Callback Handlers ───────────────────────────────────────────
@@ -209,3 +231,10 @@ export const postToMultiplePlatforms = async (accounts, contentByPlatform, media
   }
   return results;
 };
+
+export const handleLinkedInCallback = async (code, _userId, workspaceId) => {
+  try { await exchangeViaNetlify('linkedin', code, workspaceId); return { success: true }; }
+  catch (err) { return { success: false, error: err.message }; }
+};
+
+export const disconnectAccount = disconnectSocialAccount;
