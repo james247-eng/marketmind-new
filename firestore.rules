@@ -40,9 +40,26 @@ service cloud.firestore {
         allow create: if true;
       }
 
+      match /emailContacts/{contactId} {
+        allow read, write: if request.auth != null
+          && get(/databases/$(database)/documents/
+             workspaces/$(workspaceId)).data.ownerId
+             == request.auth.uid;
+        allow create: if true;
+      }
+
+      match /emailCampaigns/{campaignId} {
+        allow read, write: if request.auth != null
+          && get(/databases/$(database)/documents/
+             workspaces/$(workspaceId)).data.ownerId
+             == request.auth.uid;
+      }
+
       // All other workspace subcollections
       match /{subcollection}/{docId} {
         allow read, write: if subcollection != 'leads'
+          && subcollection != 'emailContacts'
+          && subcollection != 'emailCampaigns'
           && request.auth != null
           && (get(/databases/$(database)/documents/
              workspaces/$(workspaceId)).data.ownerId 

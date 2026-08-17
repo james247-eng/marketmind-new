@@ -12,6 +12,7 @@ import {
   Settings,
   Crown,
   Users,
+  Mail,
   X
 } from 'lucide-react';
 
@@ -27,6 +28,7 @@ function Sidebar({ isOpen, onClose }) {
     { name: 'Schedule Posts', icon: Calendar, path: workspaceId ? `/app/${workspaceId}/calendar` : '/app' },
     { name: 'Social Accounts', icon: Link2, path: workspaceId ? `/app/${workspaceId}/social` : '/app' },
     { name: 'Leads', icon: Users, path: workspaceId ? `/app/${workspaceId}/leads` : '/app' },
+    { name: 'Email', icon: Mail, path: workspaceId ? `/app/${workspaceId}/email` : '/app' },
     { name: 'Settings', icon: Settings, path: workspaceId ? `/app/${workspaceId}/settings` : '/app' },
   ];
 

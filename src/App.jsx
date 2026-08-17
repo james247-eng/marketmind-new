@@ -23,6 +23,7 @@ import BrandOnboarding from './features/brand/BrandOnboarding';
 import BrandProfile from './features/brand/BrandProfile';
 import LeadManager from './features/leads/LeadManager';
 import LeadCapturePage from './features/leads/LeadCapturePage';
+import EmailMarketing from './features/email/EmailMarketing';
 
 // Public Pages
 import LandingPage from './pages/marketing/LandingPage';
@@ -185,6 +186,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <LeadManager />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/app/:workspaceId/email"
+            element={
+              <ProtectedRoute>
+                <EmailMarketing />
               </ProtectedRoute>
             }
           />
