@@ -1,17 +1,22 @@
 // netlify/functions/generate-content.js
-// AI content generation via Groq API (LLaMA 3.3 70B)
+// AI content generation via Groq API
 
 const https = require('https');
 
 // ─── Groq API call ────────────────────────────────────────────────────────────
 
-const callGroq = (systemPrompt, userPrompt, maxTokens = 2048) => {
+const GROQ_MODELS = [
+  'moonshotai/kimi-k2-instruct',
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+];
+
+const requestGroq = (model, systemPrompt, userPrompt, maxTokens) => {
   return new Promise((resolve, reject) => {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) return reject(new Error('Missing environment variable: GROQ_API_KEY'));
 
     const body = JSON.stringify({
-      model:       'llama-3.3-70b-versatile',
+      model,
       messages:    [
         { role: 'system', content: systemPrompt },
         { role: 'user',   content: userPrompt   },
@@ -49,6 +54,21 @@ const callGroq = (systemPrompt, userPrompt, maxTokens = 2048) => {
     req.write(body);
     req.end();
   });
+};
+
+const callGroq = async (systemPrompt, userPrompt, maxTokens = 2048) => {
+  let lastError;
+
+  for (const model of GROQ_MODELS) {
+    try {
+      return await requestGroq(model, systemPrompt, userPrompt, maxTokens);
+    } catch (error) {
+      lastError = error;
+      console.warn(`Groq model ${model} failed: ${error.message}`);
+    }
+  }
+
+  throw lastError || new Error('All configured Groq models failed');
 };
 
 // ─── CORS headers ─────────────────────────────────────────────────────────────
