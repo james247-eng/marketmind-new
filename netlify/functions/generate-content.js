@@ -211,8 +211,9 @@ exports.handler = async (event) => {
     const {
       type,
       prompt,
-      tone,
-      businessContext,
+      contentType = 'social-post',
+      platform,
+      brandProfile = {},
       recentPostExamples = [],
       topic,
       businessNiche,
@@ -220,15 +221,16 @@ exports.handler = async (event) => {
 
     // ── Content generation ────────────────────────────────────────────────────
     if (type === 'generate') {
-      if (!prompt || !tone || !businessContext) {
+      if (!prompt || !brandProfile.businessName) {
         return {
           statusCode: 400,
           headers: CORS,
-          body: JSON.stringify({ error: 'Missing required fields: prompt, tone, businessContext' }),
+          body: JSON.stringify({ error: 'Missing required fields: prompt, brandProfile.businessName' }),
         };
       }
 
-      const toneInstructions = TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.professional;
+      const toneKey = String(brandProfile.tone || 'professional').toLowerCase();
+      const toneInstructions = TONE_INSTRUCTIONS[toneKey] || `Write in a ${brandProfile.tone || 'professional'} tone.`;
 
       // Build style examples section if we have real posts from their accounts
       let styleExamplesSection = '';
@@ -248,40 +250,49 @@ ${exampleLines}
 END OF STYLE REFERENCE`;
       }
 
-      // System prompt — defines who the AI is
-      const systemPrompt = `You are an elite social media strategist and copywriter with 10+ years experience growing brands across all major platforms. You have deep expertise in consumer psychology, platform algorithms, and what makes content go viral vs. get ignored.
+      const products = Array.isArray(brandProfile.products)
+        ? brandProfile.products.map((item) => `${item.name}${item.description ? `: ${item.description}` : ''}`).join('; ')
+        : '';
+      const bannedTerms = Array.isArray(brandProfile.wordsToAvoid) ? brandProfile.wordsToAvoid.join(', ') : '';
+      const systemPrompt = `You are a content writer for ${brandProfile.businessName}.
+Brand tone: ${brandProfile.tone || 'Professional'}.
+Language style: ${brandProfile.languageStyle || 'Conversational'}.
+Target audience: ${brandProfile.audience || 'General audience'}.
+Industry: ${brandProfile.industry || 'Not specified'}.
+${products ? `Key products/services: ${products}.` : ''}
+${bannedTerms ? `Never use these words: ${bannedTerms}.` : 'There are no banned terms.'}
+Write content that matches this brand perfectly.
 
-You write content that:
-- Stops scrolls in the first 3 seconds
-- Feels written by a real human, not a marketing robot
-- Matches the brand's voice perfectly
-- Drives genuine engagement (comments, shares, saves — not just likes)
-- Is specifically crafted for each platform's unique culture and format
-
+${toneInstructions}
 ${PSYCHOLOGY_RULES}
 
-${PLATFORM_SPECS}
+Return ONLY valid JSON with this exact shape: {"variants":["variant 1","variant 2","variant 3"]}.
+Each variant must be complete, distinct, and ready to use. Do not include markdown fences or explanations.`;
 
-CRITICAL OUTPUT RULE:
-Respond with ONLY a valid JSON object. No markdown fences, no backticks, no preamble, no explanation.
-The JSON must have exactly these keys: twitter, linkedin, instagram, tiktok, youtube, facebook
-Each value must be a complete, ready-to-post string for that platform.`;
+      const typeInstructions = {
+        'social-post': `Write a social media post optimized specifically for ${platform || 'Instagram'}. Follow that platform's expected length, structure, hook style, formatting, and hashtag conventions.`,
+        'product-description': 'Write a persuasive product or service description with benefits, differentiators, and a clear purchase-oriented call to action.',
+        'email-newsletter': 'Write a complete email newsletter with a compelling subject line, preview text, readable body, and one clear call to action.',
+        'ad-copy': 'Write concise conversion-focused ad copy with a strong hook, benefit-led body, and direct call to action.',
+        'blog-post-intro': 'Write an engaging blog post introduction that establishes the problem, creates curiosity, and naturally leads into the article.',
+      };
 
-      // User prompt — the actual task
-      const userPrompt = `BUSINESS PROFILE:
-${businessContext}
+      const platformGuidance = {
+        instagram: 'Use a strong first-line hook, a visually expressive caption, intentional line breaks, a clear engagement CTA, and relevant hashtags.',
+        facebook: 'Use a conversational story-led structure with useful context, natural paragraph spacing, and a question or CTA that invites comments.',
+        twitter: 'Stay within 280 characters. Lead with the hook immediately, keep every sentence concise, and use no more than three hashtags.',
+        linkedin: 'Use a professional mobile-friendly structure with a sharp opening line, short paragraphs, a useful insight, and a thoughtful CTA.',
+        tiktok: 'Use a short scroll-stopping hook, casual direct language, trend-aware phrasing, and a CTA to comment, follow, or share.',
+      };
+
+      const userPrompt = `${typeInstructions[contentType] || typeInstructions['social-post']}
+${contentType === 'social-post' ? platformGuidance[platform] || '' : ''}
 
 ${styleExamplesSection}
 
-CONTENT TASK: ${prompt}
+User's specific content request: ${prompt}
 
-${toneInstructions}
-
-Now generate platform-optimised content for this business. Use everything you know about their business, their audience, and their market. Make every word earn its place. The Facebook post MUST be at least 200 words. The LinkedIn post MUST be at least 150 words.
-
-Remember: You are writing for a real business that needs content that actually works. Not generic filler. Not AI-sounding fluff. Real, human, scroll-stopping content that serves their specific business goals.
-
-Return ONLY the JSON object with keys: twitter, linkedin, instagram, tiktok, youtube, facebook`;
+Create 3 meaningfully different variations. Return only the JSON object.`;
 
       const rawContent = await callGroq(systemPrompt, userPrompt, 3000);
 
@@ -355,12 +366,11 @@ ${rawContent.substring(0, 2000)}`;
         }
       }
 
-      const requiredKeys = ['twitter', 'linkedin', 'instagram', 'tiktok', 'youtube', 'facebook'];
-      const missingKeys  = requiredKeys.filter(k => !(k in parsed) || !parsed[k]?.trim());
-      if (missingKeys.length > 0) {
-        console.error('Missing/empty platform keys:', missingKeys);
-        throw new Error('AI response missing content for: ' + missingKeys.join(', '));
+      if (!Array.isArray(parsed.variants) || parsed.variants.length !== 3 || parsed.variants.some(variant => typeof variant !== 'string' || !variant.trim())) {
+        throw new Error('AI response must contain exactly three non-empty variants');
       }
+
+      content = JSON.stringify({ variants: parsed.variants.map(variant => variant.trim()) });
 
       return {
         statusCode: 200,

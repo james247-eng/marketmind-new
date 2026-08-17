@@ -2,17 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../services/firebase.js';
-import COLLECTIONS from '../../lib/schema.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { generateContent, conductResearch } from '../../services/aiService.js';
+import { getBrandProfile } from '../../services/brandService.js';
 import { uploadFile, validateFile } from '../../services/storageService.js';
 import { saveContent } from '../../services/contentService.js';
 import { getConnectedAccounts, postToMultiplePlatforms } from '../../services/socialMediaService.js';
 import Sidebar from '../../components/Sidebar.jsx';
 import Header from '../../components/Header.jsx';
-import { Sparkles, Upload, X, Loader, Copy, CheckCircle, Send } from 'lucide-react';
+import { Sparkles, Upload, X, Loader, Copy, Send } from 'lucide-react';
 import './ContentGenerator.css';
 
 const PLATFORMS = [
@@ -23,6 +21,31 @@ const PLATFORMS = [
   { key: 'youtube',   label: 'YouTube',    icon: '▶️', charLimit: 5000 },
   { key: 'facebook',  label: 'Facebook',   icon: '📘', charLimit: 63206 },
 ];
+
+const CONTENT_TYPES = [
+  { value: 'social-post', label: 'Social Media Post' },
+  { value: 'product-description', label: 'Product Description' },
+  { value: 'email-newsletter', label: 'Email Newsletter' },
+  { value: 'ad-copy', label: 'Ad Copy' },
+  { value: 'blog-post-intro', label: 'Blog Post Intro' },
+];
+
+const SOCIAL_PLATFORMS = PLATFORMS.filter(({ key }) => ['instagram', 'facebook', 'twitter', 'linkedin', 'tiktok'].includes(key));
+
+const parseVariants = (raw) => {
+  if (!raw) return [];
+  try {
+    const cleaned = typeof raw === 'string'
+      ? raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+      : raw;
+    const parsed = typeof cleaned === 'string' ? JSON.parse(cleaned) : cleaned;
+    return Array.isArray(parsed.variants)
+      ? parsed.variants.filter((variant) => typeof variant === 'string' && variant.trim()).slice(0, 3)
+      : [];
+  } catch {
+    return [];
+  }
+};
 
 // Robust JSON parser — handles Groq preamble text and markdown fences
 const parseGeneratedContent = (raw) => {
@@ -110,7 +133,8 @@ function ContentGenerator() {
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const { currentUser }                   = useAuth();
   const { workspaceId }                   = useParams();
-  const [businesses, setBusinesses]       = useState([]);
+  const [brandProfile, setBrandProfile]   = useState(null);
+  const [brandLoading, setBrandLoading]   = useState(true);
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [loading, setLoading]             = useState(false);
   const [posting, setPosting]             = useState(false);
@@ -118,7 +142,7 @@ function ContentGenerator() {
   const [success, setSuccess]             = useState('');
 
   const [formData, setFormData] = useState({
-    businessId: '', prompt: '', tone: 'professional', includeResearch: false,
+    prompt: '', contentType: 'social-post', platform: 'instagram', includeResearch: false,
   });
 
   const [uploadedFile,   setUploadedFile]   = useState(null);
@@ -128,11 +152,10 @@ function ContentGenerator() {
   const [savedImageUrl,  setSavedImageUrl]  = useState(null);
 
   const [rawContent,     setRawContent]     = useState('');
-  const [parsedContent,  setParsedContent]  = useState(null);
-  const [activeTab,      setActiveTab]      = useState('twitter');
-  const [editedContent,  setEditedContent]  = useState({});
-  const [copiedPlatform, setCopiedPlatform] = useState(null);
   const [researchInsights, setResearchInsights] = useState('');
+  const [variants, setVariants] = useState([]);
+  const [selectedVariant, setSelectedVariant] = useState(null);
+  const [editorContent, setEditorContent] = useState('');
 
   // Selected accounts to post to
   const [selectedAccounts, setSelectedAccounts] = useState([]);
@@ -143,24 +166,23 @@ function ContentGenerator() {
 
   useEffect(() => {
     isMounted.current = true;
-    if (!currentUser) return;
+    if (!currentUser || !workspaceId) {
+      setBrandLoading(false);
+      return;
+    }
 
-    // Fetch businesses
     (async () => {
       try {
-        const q = query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid));
-        const snap = await getDocs(q);
+        setBrandLoading(true);
+        const result = await getBrandProfile(workspaceId);
         if (!isMounted.current) return;
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setBusinesses(list);
-        if (list.length > 0) {
-          const selectedWorkspaceId = workspaceId && list.some(item => item.id === workspaceId)
-            ? workspaceId
-            : list[0].id;
-          setFormData(prev => ({ ...prev, businessId: selectedWorkspaceId }));
-        }
-      } catch (err) { 
-        console.error('Error fetching businesses:', err); 
+        if (!result.success) throw new Error(result.error || 'Unable to load brand profile');
+        setBrandProfile(result.profile);
+        if (!result.profile) setError('Complete your brand profile before generating brand-aware content.');
+      } catch (err) {
+        setError(err.message || 'Unable to load the active brand.');
+      } finally {
+        if (isMounted.current) setBrandLoading(false);
       }
     })();
 
@@ -170,11 +192,11 @@ function ContentGenerator() {
   }, [currentUser, workspaceId]);
 
   useEffect(() => {
-    if (!currentUser || !formData.businessId) return;
-    getConnectedAccounts(currentUser.uid, formData.businessId).then((result) => {
+    if (!currentUser || !workspaceId) return;
+    getConnectedAccounts(currentUser.uid, workspaceId).then((result) => {
       if (result?.success) setConnectedAccounts(result.accounts || []);
     }).catch((err) => console.error('Error fetching accounts:', err));
-  }, [currentUser, formData.businessId]);
+  }, [currentUser, workspaceId]);
 
   const handleChange   = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
   const handleCheckbox = (e) => setFormData({ ...formData, [e.target.name]: e.target.checked });
@@ -249,59 +271,45 @@ function ContentGenerator() {
   };
 
   const handleGenerate = async () => {
-    if (!formData.businessId) { setError('Please select a business'); return; }
+    if (!workspaceId) { setError('No workspace is selected.'); return; }
+    if (!brandProfile) { setError('Complete your brand profile before generating content.'); return; }
     if (!formData.prompt.trim()) { setError('Please enter what you want to create'); return; }
     setLoading(true); setError(''); setSuccess('');
-    setRawContent(''); setParsedContent(null); setEditedContent({});
-    setResearchInsights(''); setPostResults([]);
+    setRawContent('');
+    setResearchInsights(''); setPostResults([]); setVariants([]);
+    setSelectedVariant(null); setEditorContent('');
 
     try {
-      const biz = businesses.find(b => b.id === formData.businessId);
-
-      // Build rich business context using ALL saved fields
-      const businessContext = [
-        `Business Name: ${biz.name}`,
-        `Industry/Niche: ${biz.niche}`,
-        `Business Description: ${biz.description || 'Not provided'}`,
-        `Target Audience: ${biz.targetAudience || 'General audience'}`,
-        `Brand Voice: ${biz.brandVoice || 'professional'}`,
-        `Country/Market: ${biz.country || 'Not specified'}`,
-        `Business Presence: ${biz.presenceType || 'online'}`,
-      ].join(' | ');
-
       // Fetch recent posts from connected accounts as style examples
       const recentPostExamples = await fetchRecentPosts();
 
       if (formData.includeResearch) {
-        const research = await conductResearch(formData.businessId, formData.prompt, biz.niche);
+        const research = await conductResearch(workspaceId, formData.prompt, brandProfile.industry || 'business');
         if (research && research.success && isMounted.current) {
           setResearchInsights(research.insights || '');
         }
       }
 
       const result = await generateContent(
-        formData.businessId,
-        formData.prompt,
-        formData.tone,
-        businessContext,
-        recentPostExamples
+        workspaceId,
+        {
+          prompt: formData.prompt,
+          contentType: formData.contentType,
+          platform: formData.contentType === 'social-post' ? formData.platform : null,
+          brandProfile,
+          recentPostExamples,
+        }
       );
 
       if (!isMounted.current) return;
 
       if (result && result.success) {
         setRawContent(result.content || '');
-        const parsed = parseGeneratedContent(result.content);
-        if (parsed) {
-          // Add facebook copy from twitter if not present
-          if (!parsed.facebook && parsed.twitter) parsed.facebook = parsed.twitter;
-          setParsedContent(parsed);
-          const initial = {};
-          PLATFORMS.forEach(p => { initial[p.key] = parsed[p.key] || ''; });
-          setEditedContent(initial);
-          setActiveTab('twitter');
+        const generatedVariants = parseVariants(result.content);
+        if (generatedVariants.length === 3) {
+          setVariants(generatedVariants);
         } else {
-          setError('Content generated but could not be split by platform. Edit below.');
+          setError('Content was generated but the three variants could not be read. Please try again.');
         }
       } else {
         setError(result?.error || 'Failed to generate content.');
@@ -314,18 +322,6 @@ function ContentGenerator() {
     }
   };
 
-  const handleCopy = async (platformKey) => {
-    try {
-      await navigator.clipboard.writeText(editedContent[platformKey] || '');
-      setCopiedPlatform(platformKey);
-      setTimeout(() => {
-        if (isMounted.current) setCopiedPlatform(null);
-      }, 2000);
-    } catch { 
-      setError('Failed to copy.'); 
-    }
-  };
-
   const toggleAccount = (accountId) => {
     setSelectedAccounts(prev =>
       prev.includes(accountId) ? prev.filter(id => id !== accountId) : [...prev, accountId]
@@ -335,7 +331,7 @@ function ContentGenerator() {
   // Upload image if present, then post to selected platforms
   const handlePostNow = async () => {
     if (selectedAccounts.length === 0) { setError('Select at least one platform to post to'); return; }
-    if (!parsedContent) { setError('Content must be properly generated and parsed before posting. Please regenerate if you see raw JSON.'); return; }
+    if (!editorContent.trim()) { setError('Choose and review a variant before posting.'); return; }
 
     setPosting(true); setError(''); setPostResults([]);
 
@@ -345,7 +341,7 @@ function ContentGenerator() {
       // Upload file if not already uploaded
       if (uploadedFile && !imageUrl) {
         setUploadProgress(50);
-        const up = await uploadFile(uploadedFile, currentUser.uid, formData.businessId);
+        const up = await uploadFile(uploadedFile, currentUser.uid, workspaceId);
         if (up && up.success) { 
           imageUrl = up.url; 
           setSavedImageUrl(imageUrl); 
@@ -355,8 +351,9 @@ function ContentGenerator() {
         }
       }
 
-      const accountsToPost = connectedAccounts.filter(a => selectedAccounts.includes(a.id));
-      const results        = await postToMultiplePlatforms(accountsToPost, editedContent, imageUrl);
+      const accountsToPost = connectedAccounts.filter(a => selectedAccounts.includes(a.id) && a.platform === formData.platform);
+      const platformContent = { [formData.platform]: editorContent };
+      const results        = await postToMultiplePlatforms(accountsToPost, platformContent, imageUrl);
 
       if (!isMounted.current) return;
       setPostResults(results || []);
@@ -373,13 +370,13 @@ function ContentGenerator() {
   };
 
   const handleSave = async () => {
-    if (!parsedContent && !rawContent) { setError('No content to save'); return; }
+    if (selectedVariant === null || !editorContent.trim()) { setError('Choose a variant before saving.'); return; }
     setLoading(true); setError('');
     try {
       let imageUrl = savedImageUrl;
       if (uploadedFile && !imageUrl) {
         setUploadProgress(50);
-        const up = await uploadFile(uploadedFile, currentUser.uid, formData.businessId);
+        const up = await uploadFile(uploadedFile, currentUser.uid, workspaceId);
         if (up && up.success) { 
           imageUrl = up.url; 
           setSavedImageUrl(imageUrl); 
@@ -389,9 +386,17 @@ function ContentGenerator() {
         }
       }
       const saveResult = await saveContent({
-        userId: currentUser.uid, businessId: formData.businessId,
-        prompt: formData.prompt, tone: formData.tone,
-        content: parsedContent ? JSON.stringify(editedContent) : rawContent,
+        userId: currentUser.uid,
+        workspaceId,
+        businessId: workspaceId,
+        prompt: formData.prompt,
+        contentType: formData.contentType,
+        platform: formData.contentType === 'social-post' ? formData.platform : null,
+        brandProfileVersion: brandProfile.updatedAt || null,
+        variants,
+        selectedVariant: editorContent,
+        selectedVariantIndex: selectedVariant,
+        content: editorContent,
         imageUrl, researchInsights: researchInsights || null,
       });
       if (saveResult && saveResult.success && isMounted.current) {
@@ -415,14 +420,19 @@ function ContentGenerator() {
 
   const resetForm = () => {
     setFormData(prev => ({ ...prev, prompt: '', includeResearch: false }));
-    setRawContent(''); setParsedContent(null); setEditedContent({});
+    setRawContent('');
+    setVariants([]); setSelectedVariant(null); setEditorContent('');
     setResearchInsights(''); setSavedImageUrl(null); setPostResults([]);
     setSelectedAccounts([]); removeFile(); setError(''); setSuccess('');
   };
 
-  const hasOutput = parsedContent || rawContent;
-  const charCount   = (key) => (editedContent[key] || '').length;
-  const isOverLimit = (key) => { const p = PLATFORMS.find(p => p.key === key); return p ? charCount(key) > p.charLimit : false; };
+  const useVariant = (variant, index) => {
+    setSelectedVariant(index);
+    setEditorContent(variant);
+    setError('');
+  };
+
+  const hasOutput = variants.length > 0 || editorContent;
 
   return (
     <div className="app">
@@ -437,6 +447,16 @@ function ContentGenerator() {
             </div>
           </div>
 
+          {brandLoading ? (
+            <div className="brand-context-card">Loading active brand profile...</div>
+          ) : brandProfile && (
+            <div className="brand-context-card">
+              <span>Active brand</span>
+              <strong>{brandProfile.businessName || 'Unnamed brand'}</strong>
+              <span className="brand-tone-badge">{brandProfile.tone || 'Default tone'}</span>
+            </div>
+          )}
+
           {error   && <div className="alert alert-error">{error}</div>}
           {success && <div className="alert alert-success">{success}</div>}
 
@@ -447,30 +467,25 @@ function ContentGenerator() {
               <h3>Content Details</h3>
 
               <div className="form-group">
-                <label>Select Business</label>
-                <select name="businessId" value={formData.businessId} onChange={handleChange} disabled={businesses.length === 0}>
-                  {businesses.length === 0
-                    ? <option>No businesses found</option>
-                    : businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <label>Content Type</label>
+                <select name="contentType" value={formData.contentType} onChange={handleChange}>
+                  {CONTENT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
               </div>
+
+              {formData.contentType === 'social-post' && (
+                <div className="form-group">
+                  <label>Platform</label>
+                  <select name="platform" value={formData.platform} onChange={handleChange}>
+                    {SOCIAL_PLATFORMS.map((platform) => <option key={platform.key} value={platform.key}>{platform.label}</option>)}
+                  </select>
+                </div>
+              )}
 
               <div className="form-group">
                 <label>What do you want to create?</label>
                 <textarea name="prompt" value={formData.prompt} onChange={handleChange}
                   placeholder="E.g., A post about our new product launch..." rows="4" />
-              </div>
-
-              <div className="form-group">
-                <label>Tone</label>
-                <select name="tone" value={formData.tone} onChange={handleChange}>
-                  <option value="professional">Professional</option>
-                  <option value="casual">Casual & Friendly</option>
-                  <option value="witty">Witty & Humorous</option>
-                  <option value="inspirational">Inspirational</option>
-                  <option value="urgent">Urgent & Persuasive</option>
-                  <option value="educational">Educational</option>
-                </select>
               </div>
 
               <div className="form-group">
@@ -502,7 +517,7 @@ function ContentGenerator() {
                 )}
               </div>
 
-              <button className="btn-generate" onClick={handleGenerate} disabled={loading || businesses.length === 0}>
+              <button className="btn-generate" onClick={handleGenerate} disabled={loading || brandLoading || !brandProfile}>
                 {loading ? <><Loader className="spinner" size={20} /> Generating...</> : <><Sparkles size={20} /> Generate Content</>}
               </button>
             </div>
@@ -519,45 +534,33 @@ function ContentGenerator() {
                   </details>
                 )}
 
-                {parsedContent ? (
-                  <>
-                    <div className="platform-tabs">
-                      {PLATFORMS.map(p => (
-                        <button key={p.key} className={`platform-tab ${activeTab === p.key ? 'active' : ''}`} onClick={() => setActiveTab(p.key)}>
-                          {p.icon} {p.label}
-                        </button>
-                      ))}
-                    </div>
-                    {PLATFORMS.map(p => activeTab === p.key && (
-                      <div key={p.key} className="platform-content">
-                        <div className="platform-content-header">
-                          <span className={`char-count ${isOverLimit(p.key) ? 'over-limit' : ''}`}>{charCount(p.key)} / {p.charLimit} chars</span>
-                          <button className="btn-copy" onClick={() => handleCopy(p.key)}>
-                            {copiedPlatform === p.key ? <><CheckCircle size={15} /> Copied!</> : <><Copy size={15} /> Copy</>}
-                          </button>
-                        </div>
-                        <textarea
-                          className={`platform-textarea ${isOverLimit(p.key) ? 'over-limit' : ''}`}
-                          value={editedContent[p.key] || ''}
-                          onChange={(e) => setEditedContent(prev => ({ ...prev, [p.key]: e.target.value }))}
-                          rows="8"
-                        />
-                      </div>
-                    ))}
-                  </>
-                ) : (
+                <div className="variant-grid">
+                  {variants.map((variant, index) => (
+                    <article key={index} className={`variant-card ${selectedVariant === index ? 'selected' : ''}`}>
+                      <div className="variant-card-header"><strong>Variant {index + 1}</strong>{selectedVariant === index && <span>Selected</span>}</div>
+                      <p>{variant}</p>
+                      <button className="btn-secondary" onClick={() => useVariant(variant, index)}>Use This</button>
+                    </article>
+                  ))}
+                </div>
+                {selectedVariant !== null && (
                   <div className="content-output">
-                    <textarea value={rawContent} onChange={(e) => setRawContent(e.target.value)} rows="12" />
+                    <label htmlFor="content-editor"><strong>Final review</strong></label>
+                    <textarea id="content-editor" value={editorContent} onChange={(e) => setEditorContent(e.target.value)} rows="12" />
+                    <div className="platform-content-header">
+                      <span className="char-count">{editorContent.length} characters</span>
+                      <button className="btn-copy" onClick={() => navigator.clipboard.writeText(editorContent)}><Copy size={15} /> Copy</button>
+                    </div>
                   </div>
                 )}
 
                 {/* ── Post Now section ── */}
-                {connectedAccounts.length > 0 && (
+                {formData.contentType === 'social-post' && connectedAccounts.some(account => account.platform === formData.platform) && (
                   <div className="post-now-section">
                     <h4>Post Now</h4>
                     <p className="post-now-hint">Select accounts to post to immediately:</p>
                     <div className="account-checkboxes">
-                      {connectedAccounts.map(account => (
+                      {connectedAccounts.filter(account => account.platform === formData.platform).map(account => (
                         <label key={account.id} className="account-checkbox-label">
                           <input
                             type="checkbox"
@@ -571,15 +574,15 @@ function ContentGenerator() {
                         </label>
                       ))}
                     </div>
-                    <button className="btn-post-now" onClick={handlePostNow} disabled={posting || selectedAccounts.length === 0 || !parsedContent}>
+                    <button className="btn-post-now" onClick={handlePostNow} disabled={posting || selectedAccounts.length === 0 || !editorContent}>
                       {posting ? <><Loader className="spinner" size={18} /> Posting...</> : <><Send size={18} /> Post Now</>}
                     </button>
                   </div>
                 )}
 
-                {connectedAccounts.length === 0 && (
+                {formData.contentType === 'social-post' && !connectedAccounts.some(account => account.platform === formData.platform) && (
                   <p className="no-accounts-hint">
-                    <Link to={formData.businessId ? `/app/${formData.businessId}/social` : '/app'}>Connect social accounts</Link> to post directly from here.
+                    <Link to={workspaceId ? `/app/${workspaceId}/social` : '/app'}>Connect social accounts</Link> to post directly from here.
                   </p>
                 )}
 

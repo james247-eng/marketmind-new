@@ -52,10 +52,16 @@ const recordResearchUsage = async (workspaceId, topic, businessNiche, insights) 
 // Returns { success, content } — content is a JSON string with keys:
 // twitter, linkedin, instagram, tiktok, youtube
 
-export const generateContent = async (workspaceId, prompt, tone, businessContext, recentPostExamples = []) => {
+export const generateContent = async (workspaceId, generationRequest) => {
   try {
-    const data = await callNetlify({ type: 'generate', prompt, tone, businessContext, recentPostExamples });
-    await recordGeneration(workspaceId, prompt, tone, businessContext, data.content);
+    const data = await callNetlify({ type: 'generate', ...generationRequest });
+    await recordGeneration(
+      workspaceId,
+      generationRequest.prompt,
+      generationRequest.brandProfile?.tone || 'brand default',
+      JSON.stringify(generationRequest.brandProfile || {}),
+      data.content
+    );
 
     return {
       success: true,
