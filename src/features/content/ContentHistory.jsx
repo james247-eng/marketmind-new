@@ -1,479 +1,109 @@
-// ContentHistory.jsx
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import { collection, query, where, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import { getConnectedAccounts, postToMultiplePlatforms } from '../../services/socialMediaService';
-import Sidebar from '../../components/Sidebar';
-import Header from '../../components/Header';
-import { FileText, Trash2, Copy, CheckCircle, AlertCircle, Loader, Send, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { AlertCircle, CalendarPlus, Check, Copy, FileText, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react';
+import Sidebar from '../../components/Sidebar.jsx';
+import Header from '../../components/Header.jsx';
+import { deleteContentItem, getContentItems } from '../../services/contentService.js';
 import './ContentHistory.css';
-import COLLECTIONS from '../../lib/schema.js';
 
-const PLATFORMS = [
-  { key: 'twitter',   label: 'Twitter/X', icon: '🐦', color: '#1DA1F2' },
-  { key: 'linkedin',  label: 'LinkedIn',  icon: '💼', color: '#0077B5' },
-  { key: 'instagram', label: 'Instagram', icon: '📷', color: '#E1306C' },
-  { key: 'tiktok',    label: 'TikTok',    icon: '🎵', color: '#000000' },
-  { key: 'youtube',   label: 'YouTube',   icon: '▶️', color: '#FF0000' },
-  { key: 'facebook',  label: 'Facebook',  icon: '📘', color: '#1877F2' },
+const PAGE_SIZE = 20;
+const CONTENT_TYPES = [
+  ['all', 'All content types'], ['social-post', 'Social Media Post'], ['product-description', 'Product Description'],
+  ['email-newsletter', 'Email Newsletter'], ['ad-copy', 'Ad Copy'], ['blog-post-intro', 'Blog Post Intro'],
 ];
+const PLATFORMS = [
+  ['all', 'All platforms', ''], ['instagram', 'Instagram', 'IG'], ['facebook', 'Facebook', 'FB'],
+  ['twitter', 'Twitter/X', 'X'], ['linkedin', 'LinkedIn', 'IN'], ['tiktok', 'TikTok', 'TT'],
+];
+const STATUSES = [['all', 'All statuses'], ['draft', 'Draft'], ['scheduled', 'Scheduled'], ['published', 'Published'], ['failed', 'Failed']];
+const initialFilters = { search: '', contentType: 'all', platform: 'all', status: 'all', from: '', to: '' };
 
-const parseContent = (raw) => {
-  if (!raw) return null;
-  if (typeof raw === 'object' && !Array.isArray(raw)) return raw;
-  
-  const strategies = [
-    () => JSON.parse(raw.trim()),
-    () => JSON.parse(raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()),
-    () => {
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (match) return JSON.parse(match[0]);
-      throw new Error();
-    }
-  ];
-
-  for (const strategy of strategies) {
-    try {
-      const clean = strategy();
-      if (clean && typeof clean === 'object') return clean;
-    } catch {
-      continue;
-    }
-  }
-  return null;
-};
+const getDate = (value) => value?.toDate?.() || (value ? new Date(value) : null);
+const getText = (item) => String(item.selectedVariant || item.content || item.prompt || '');
+const getLabel = (options, value) => options.find(([key]) => key === value)?.[1] || value || 'Unknown';
 
 function ContentHistory() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { currentUser } = useAuth();
   const { workspaceId } = useParams();
-  const [businesses, setBusinesses] = useState([]);
-  const [selectedBusinessId, setSelectedBusinessId] = useState('');
-  const [historyItems, setHistoryItems] = useState([]);
-  const [connectedAccounts, setConnectedAccounts] = useState([]);
-  
+  const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [filters, setFilters] = useState(initialFilters);
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [repostLoadingId, setRepostLoadingId] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [copiedId, setCopiedId] = useState('');
 
-  // UI Multi-State Action Trackers Keyed by Document ID to prevent index lookups crossing contexts
-  const [expandedItemId, setExpandedItemId] = useState(null);
-  const [copiedPlatformKey, setCopiedPlatformKey] = useState(null);
-  const [selectedAccountsMap, setSelectedAccountsMap] = useState({});
-  const [repostResultsMap, setRepostResultsMap] = useState({});
-
-  // ─── Data Hydration Layer ──────────────────────────────────────────────────
-
-  const fetchInitialContext = useCallback(async () => {
-    if (!currentUser) return;
-    setLoading(true);
+  const loadItems = useCallback(async (append = false) => {
+    if (!workspaceId) { setError('No workspace was selected.'); setLoading(false); return; }
+    append ? setLoadingMore(true) : setLoading(true);
     setError('');
-
-    try {
-      // 1. Fetch connected workspaces
-      const bizQuery = query(collection(db, COLLECTIONS.workspaces), where('ownerId', '==', currentUser.uid));
-      const bizSnapshot = await getDocs(bizQuery);
-      const bizList = bizSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setBusinesses(bizList);
-
-      if (bizList.length > 0) {
-        setSelectedBusinessId(workspaceId && bizList.some(item => item.id === workspaceId) ? workspaceId : bizList[0].id);
-      }
-
-      // 2. Fetch linked social platform distribution channels
-      const accResult = await getConnectedAccounts(currentUser.uid, bizList[0]?.id);
-      if (accResult && accResult.success) {
-        setConnectedAccounts(accResult.accounts || []);
-      }
-    } catch (err) {
-      console.error('Context allocation failure:', err);
-      setError('System could not pre-populate active user workspace states.');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, workspaceId]);
-
-  const fetchHistory = useCallback(async () => {
-    if (!currentUser || !selectedBusinessId) return;
-    setLoading(true);
-    setError('');
-    
-    try {
-      const historyQuery = query(
-        collection(db, COLLECTIONS.contentItems(selectedBusinessId)),
-        where('userId', '==', currentUser.uid),
-        where('businessId', '==', selectedBusinessId),
-        orderBy('createdAt', 'desc')
-      );
-      
-      let snapshot;
-      try {
-        snapshot = await getDocs(historyQuery);
-      } catch (indexErr) {
-        console.warn('Fallback execution triggered. Primary Firestore custom index missing:', indexErr.message);
-        const fallbackQuery = query(
-          collection(db, COLLECTIONS.contentItems(selectedBusinessId)),
-          where('userId', '==', currentUser.uid),
-          where('businessId', '==', selectedBusinessId)
-        );
-        snapshot = await getDocs(fallbackQuery);
-      }
-
-      const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      
-      // Client-side execution sorting backup block
-      items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-      setHistoryItems(items);
-    } catch (err) {
-      console.error('History lookup thread crashed:', err);
-      setError('Failed to fetch past content options from your workspace.');
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser, selectedBusinessId]);
+    const offset = append ? items.length : 0;
+    const result = await getContentItems(workspaceId, { ...filters, offset, limit: PAGE_SIZE });
+    if (result.success) {
+      setItems((current) => append ? [...current, ...result.content] : result.content);
+      setTotal(result.total);
+      setHasMore(result.hasMore);
+    } else setError(result.error || 'Unable to load content history.');
+    setLoading(false); setLoadingMore(false);
+  }, [filters, items.length, workspaceId]);
 
   useEffect(() => {
-    fetchInitialContext();
-  }, [fetchInitialContext]);
+    const timer = setTimeout(() => loadItems(false), 200);
+    return () => clearTimeout(timer);
+  }, [filters, workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (selectedBusinessId) {
-      fetchHistory();
-    }
-  }, [selectedBusinessId, fetchHistory]);
-
-  // Alert dismiss auto-lifecycle hook
-  useEffect(() => {
-    if (!error && !success) return;
-    const t = setTimeout(() => { setError(''); setSuccess(''); }, 6000);
-    return () => clearTimeout(t);
-  }, [error, success]);
-
-  // ─── Operations Logic ──────────────────────────────────────────────────────
-
-  const handleCopyText = async (text, platformKey) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedPlatformKey(platformKey);
-      setTimeout(() => setCopiedPlatformKey(null), 2000);
-    } catch {
-      setError('Unable to copy requested text blocks to your local clipboard.');
-    }
+  const updateFilter = (field, value) => setFilters((current) => ({ ...current, [field]: value }));
+  const copyContent = async (item) => {
+    try { await navigator.clipboard.writeText(getText(item)); setCopiedId(item.id); setTimeout(() => setCopiedId(''), 1800); }
+    catch { setError('Content could not be copied to the clipboard.'); }
   };
-
-  const handleDeleteItem = async (itemId, e) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to permanently delete this content log from your historical archives?')) return;
-    
-    try {
-      await deleteDoc(doc(db, COLLECTIONS.contentItems(selectedBusinessId), itemId));
-      setSuccess('Log item permanently cleared from dashboard profile history.');
-      setHistoryItems(prev => prev.filter(item => item.id !== itemId));
-      if (expandedItemId === itemId) setExpandedItemId(null);
-    } catch (err) {
-      console.error('Deletion failure:', err);
-      setError('System network block prevented full document asset purging.');
-    }
+  const removeItem = async (item) => {
+    if (!confirm('Delete this content item? This action cannot be undone.')) return;
+    const result = await deleteContentItem(workspaceId, item.id);
+    if (!result.success) { setError(result.error || 'Unable to delete content.'); return; }
+    setItems((current) => current.filter(({ id }) => id !== item.id)); setTotal((current) => Math.max(0, current - 1));
   };
+  const openGenerator = (item) => navigate(`/app/${workspaceId}/content`, { state: { editContentItem: item } });
+  const openScheduler = (item) => navigate(`/app/${workspaceId}/calendar`, { state: { preloadContentItemId: item.id } });
 
-  const toggleAccountSelection = (itemId, accountId) => {
-    setSelectedAccountsMap(prev => {
-      const currentSelection = prev[itemId] || [];
-      const updated = currentSelection.includes(accountId)
-        ? currentSelection.filter(id => id !== accountId)
-        : [...currentSelection, accountId];
-      return { ...prev, [itemId]: updated };
-    });
-  };
-
-  const handleRepostExecution = async (item) => {
-    const itemSelectedAccounts = selectedAccountsMap[item.id] || [];
-    if (itemSelectedAccounts.length === 0) {
-      alert('Please toggle on at least one linked account channel check box before executing a repost payload dispatch.');
-      return;
-    }
-
-    setRepostLoadingId(item.id);
-    setError('');
-    
-    try {
-      const targetAccounts = connectedAccounts.filter(acc => itemSelectedAccounts.includes(acc.id));
-      const normalizedPayload = parseContent(item.content) || item.content;
-
-      const postingOutcomes = await postToMultiplePlatforms(
-        targetAccounts,
-        normalizedPayload,
-        item.imageUrl || null
-      );
-
-      setRepostResultsMap(prev => ({ ...prev, [item.id]: postingOutcomes }));
-      
-      const distinctFailures = postingOutcomes.some(res => !res.success);
-      if (distinctFailures) {
-        setSuccess('⚠️ Repost complete but partial processing block errors were caught across distribution channels.');
-      } else {
-        setSuccess('🎉 Repost distribution processes fully executed across chosen platforms!');
-      }
-    } catch (err) {
-      console.error('Repost processing engine crash context:', err);
-      setError(`Critical posting termination exception raised: ${err.message}`);
-    } finally {
-      setRepostLoadingId(null);
-    }
-  };
-
-  const toggleExpandRow = (itemId) => {
-    setExpandedItemId(prev => (prev === itemId ? null : itemId));
-    // Seed selected account items automatically with matching account channels on expand
-    if (!selectedAccountsMap[itemId]) {
-      const targetItem = historyItems.find(i => i.id === itemId);
-      const parsed = parseContent(targetItem?.content);
-      if (parsed) {
-        const structuralPlatforms = Object.keys(parsed);
-        const automaticallyMatchedIds = connectedAccounts
-          .filter(acc => structuralPlatforms.includes(acc.platform))
-          .map(acc => acc.id);
-        setSelectedAccountsMap(prev => ({ ...prev, [itemId]: automaticallyMatchedIds }));
-      }
-    }
-  };
-
-  // ─── Layout Output ─────────────────────────────────────────────────────────
-
-  return (
-    <div className="app">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main className="main-content">
-        <Header onMenuClick={() => setSidebarOpen(true)} />
-        <div className="content-area">
-          
-          <div className="page-header">
-            <div>
-              <h1>Content History</h1>
-              <p>Review, repurpose, and verify logs of generated content templates across linked profiles</p>
+  return <div className="app">
+    <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+    <main className="main-content"><Header onMenuClick={() => setSidebarOpen(true)} /><div className="content-area">
+      <div className="page-header"><div><h1>Content History</h1><p>Find, reuse, and manage content created for this workspace.</p></div><strong className="history-total">{total} item{total === 1 ? '' : 's'}</strong></div>
+      <section className="history-filters" aria-label="Content filters">
+        <label className="history-search"><Search size={17} /><input type="search" value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search content" /></label>
+        <select value={filters.contentType} onChange={(event) => updateFilter('contentType', event.target.value)} aria-label="Content type">{CONTENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <select value={filters.platform} onChange={(event) => updateFilter('platform', event.target.value)} aria-label="Platform">{PLATFORMS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)} aria-label="Status">{STATUSES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <label className="date-filter"><span>From</span><input type="date" value={filters.from} onChange={(event) => updateFilter('from', event.target.value)} /></label>
+        <label className="date-filter"><span>To</span><input type="date" value={filters.to} min={filters.from || undefined} onChange={(event) => updateFilter('to', event.target.value)} /></label>
+      </section>
+      {error && <div className="alert alert-error"><AlertCircle size={18} />{error}</div>}
+      {loading ? <div className="history-skeleton" aria-label="Loading content">{[1, 2, 3].map((key) => <div key={key} className="skeleton-card"><span /><span /><span /></div>)}</div> : items.length === 0 ? <div className="empty-state">
+        <FileText size={44} className="empty-icon" /><h2>{total === 0 && Object.values(filters).every((value) => !value || value === 'all') ? 'No content yet' : 'No matching content'}</h2>
+        {Object.values(filters).every((value) => !value || value === 'all') ? <p>You have not generated any content yet. Go to Generate Content to create your first piece.</p> : <p>No content matches your filters. Try adjusting your search.</p>}
+        <Link className="btn-primary-link" to={`/app/${workspaceId}/content`}>Generate Content</Link>
+      </div> : <>
+        <div className="history-grid">{items.map((item) => {
+          const text = getText(item); const platform = PLATFORMS.find(([key]) => key === item.platform); const created = getDate(item.createdAt);
+          return <article className="history-card" key={item.id}>
+            <div className="history-card-header"><div className="history-card-meta"><span className="type-badge">{getLabel(CONTENT_TYPES, item.contentType)}</span>{item.platform && <span className="platform-badge"><b>{platform?.[2] || '?'}</b>{platform?.[1] || item.platform}</span>}<span className={`status-badge status-${item.status || 'draft'}`}>{item.status || 'draft'}</span></div><time>{created && !Number.isNaN(created.getTime()) ? created.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Date unavailable'}</time></div>
+            <p className="history-preview">{text.slice(0, 150)}{text.length > 150 ? '...' : ''}</p>
+            <div className="history-actions">
+              <button title="Copy content" onClick={() => copyContent(item)}>{copiedId === item.id ? <Check size={16} /> : <Copy size={16} />}<span>{copiedId === item.id ? 'Copied' : 'Copy'}</span></button>
+              <button title="Edit content" onClick={() => openGenerator(item)}><Pencil size={16} /><span>Edit</span></button>
+              <button title="Schedule content" onClick={() => openScheduler(item)}><CalendarPlus size={16} /><span>Schedule</span></button>
+              {['published', 'failed'].includes(item.status) && <button title="Republish content" onClick={() => openScheduler(item)}><RefreshCw size={16} /><span>Republish</span></button>}
+              <button className="danger" title="Delete content" onClick={() => removeItem(item)}><Trash2 size={16} /><span>Delete</span></button>
             </div>
-            
-            {businesses.length > 0 && (
-              <div className="business-selector-wrap">
-                <select 
-                  className="business-history-select"
-                  value={selectedBusinessId} 
-                  onChange={(e) => setSelectedBusinessId(e.target.value)}
-                >
-                  {businesses.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <div className="alert alert-error" role="alert">
-              <AlertCircle size={18} /> {error}
-            </div>
-          )}
-          {success && (
-            <div className="alert alert-success" role="status">
-              <CheckCircle size={18} /> {success}
-            </div>
-          )}
-
-          {loading && historyItems.length === 0 ? (
-            <div className="loading-state">
-              <Loader size={24} className="spin" />
-              <span>Querying saved records metrics...</span>
-            </div>
-          ) : historyItems.length === 0 ? (
-            <div className="empty-state-container">
-              <FileText size={48} className="empty-icon" />
-              <h3>No History Found</h3>
-              <p>You haven't saved any generation outputs for this business workspace yet.</p>
-            </div>
-          ) : (
-            <div className="history-list-wrapper">
-              {historyItems.map((item) => {
-                const parsedPayload = parseContent(item.content);
-                const isExpanded = expandedItemId === item.id;
-                const activeSelections = selectedAccountsMap[item.id] || [];
-                const itemPostOutcomes = repostResultsMap[item.id] || [];
-                const isCurrentlyPosting = repostLoadingId === item.id;
-
-                return (
-                  <div 
-                    key={item.id} 
-                    className={`history-card-item ${isExpanded ? 'history-card-item--expanded' : ''}`}
-                    onClick={() => toggleExpandRow(item.id)}
-                  >
-                    
-                    {/* Compact Card Header Interface Row */}
-                    <div className="history-card-summary">
-                      <div className="history-meta-block">
-                        <span className="history-timestamp-badge">
-                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, {
-                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                          }) : 'Date Unspecified'}
-                        </span>
-                        <h4 className="history-prompt-summary-text">{item.prompt || 'Manual Draft Content'}</h4>
-                        <span className={`status-badge-indicator status-badge-indicator--${item.status || 'draft'}`}>
-                          {item.status || 'draft'}
-                        </span>
-                      </div>
-                      
-                      <div className="history-row-actions" onClick={e => e.stopPropagation()}>
-                        <button 
-                          className="action-btn-trigger action-btn-trigger--delete"
-                          onClick={(e) => handleDeleteItem(item.id, e)}
-                          title="Purge record"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        <button className="action-btn-trigger action-btn-trigger--expand">
-                          <RefreshCw size={16} className={isCurrentlyPosting ? 'spin' : ''} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Extended Interactive Detailed Display Block Drawer */}
-                    {isExpanded && (
-                      <div className="history-card-drawer-details" onClick={e => e.stopPropagation()}>
-                        
-                        {item.researchInsights && (
-                          <div className="drawer-insight-highlight-pane">
-                            <h5>Attached Market Research Insights Context:</h5>
-                            <p>{item.researchInsights}</p>
-                          </div>
-                        )}
-
-                        <div className="drawer-content-split-grid">
-                          
-                          {/* Text/Platform Management Panels */}
-                          <div className="drawer-text-blocks-section">
-                            {parsedPayload ? (
-                              <div className="parsed-platforms-outputs-stack">
-                                {PLATFORMS.map(p => {
-                                  const textValue = parsedPayload[p.key];
-                                  if (!textValue) return null;
-                                  
-                                  return (
-                                    <div key={p.key} className="platform-historical-output-block">
-                                      <div className="platform-block-meta-header">
-                                        <span>{p.icon} <strong>{p.label} Copy</strong></span>
-                                        <button 
-                                          className="btn-mini-copy" 
-                                          onClick={() => handleCopyText(textValue, `${item.id}-${p.key}`)}
-                                        >
-                                          {copiedPlatformKey === `${item.id}-${p.key}` ? <CheckCircle size={12} /> : <Copy size={12} />}
-                                          {copiedPlatformKey === `${item.id}-${p.key}` ? 'Copied' : 'Copy Block'}
-                                        </button>
-                                      </div>
-                                      <p className="platform-raw-copytext-render">{textValue}</p>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="unparsed-historical-output-block">
-                                <div className="platform-block-meta-header">
-                                  <span>📝 <strong>Raw Block Text Output</strong></span>
-                                  <button 
-                                    className="btn-mini-copy" 
-                                    onClick={() => handleCopyText(item.content, item.id)}
-                                  >
-                                    {copiedPlatformKey === item.id ? <CheckCircle size={12} /> : <Copy size={12} />}
-                                    {copiedPlatformKey === item.id ? 'Copied' : 'Copy'}
-                                  </button>
-                                </div>
-                                <p className="platform-raw-copytext-render">{item.content}</p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Graphical Assets + Quick Repost Execution Panel Controls */}
-                          <div className="drawer-assets-controls-section">
-                            {item.imageUrl && (
-                              <div className="drawer-graphic-media-container">
-                                <h5>Attached Marketing Graphic Asset:</h5>
-                                <div className="media-preview-box-wrapper">
-                                  {item.imageUrl.toLowerCase().includes('.mp4') ? (
-                                    <video src={item.imageUrl} controls className="media-file-asset-render" />
-                                  ) : (
-                                    <img src={item.imageUrl} alt="Historical compilation graphic" className="media-file-asset-render" />
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {connectedAccounts.length > 0 ? (
-                              <div className="drawer-repost-action-panel">
-                                <h5>Republish/Repost Operations Node</h5>
-                                <p className="panel-instructions-label">Select profiles to deploy copies to immediately:</p>
-                                
-                                <div className="panel-channels-checkboxes-list">
-                                  {connectedAccounts.map(account => (
-                                    <label key={account.id} className="checkbox-channel-row-item">
-                                      <input 
-                                        type="checkbox" 
-                                        checked={activeSelections.includes(account.id)}
-                                        onChange={() => toggleAccountSelection(item.id, account.id)}
-                                      />
-                                      <span className="checkbox-custom-platform-icon">
-                                        {PLATFORMS.find(p => p.key === account.platform)?.icon || '🔗'}
-                                      </span>
-                                      <span className="checkbox-channel-display-identity">
-                                        {account.platform.toUpperCase()} — {account.accountName}
-                                      </span>
-                                    </label>
-                                  ))}
-                                </div>
-
-                                <button 
-                                  className="btn-execute-repost-now"
-                                  onClick={() => handleRepostExecution(item)}
-                                  disabled={isCurrentlyPosting || activeSelections.length === 0}
-                                >
-                                  {isCurrentlyPosting ? (
-                                    <><Loader size={14} className="spin" /> <span>Deploying posts...</span></>
-                                  ) : (
-                                    <><Send size={14} /> <span>Repost Selected Channels</span></>
-                                  )}
-                                </button>
-
-                                {itemPostOutcomes.length > 0 && (
-                                  <div className="panel-execution-outcomes-report-card">
-                                    {itemPostOutcomes.map((res, index) => (
-                                      <div key={index} className={`outcomes-report-row outcomes-report-row--${res.success ? 'success' : 'error'}`}>
-                                        <span>{res.success ? '✅' : '❌'} <strong>{res.platform.toUpperCase()}</strong> ({res.accountName})</span>
-                                        {!res.success && res.error && <p className="outcome-row-error-print">Error: {res.error}</p>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="drawer-repost-missing-channels-hint">
-                                <AlertCircle size={16} />
-                                <p>No linked channels found. Link your accounts in the <a href="/app/:workspaceId/social">Social Accounts Panel</a> to toggle live background repost hooks.</p>
-                              </div>
-                            )}
-                          </div>
-
-                        </div>
-                      </div>
-                    )}
-
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
-  );
+          </article>;
+        })}</div>
+        {hasMore && <div className="load-more-wrap"><button className="btn-load-more" disabled={loadingMore} onClick={() => loadItems(true)}>{loadingMore ? 'Loading...' : 'Load more'}</button></div>}
+      </>}
+    </div></main>
+  </div>;
 }
 
 export default ContentHistory;

@@ -1,7 +1,7 @@
 // contentService.js
 // Handles saving and retrieving content from Firestore with schema normalization defenses
 
-import { collection, addDoc, query, where, getDocs, orderBy, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, orderBy, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase.js';
 import COLLECTIONS from '../lib/schema.js';
 
@@ -96,4 +96,29 @@ export const updateContentStatus = async (workspaceId, contentId, status) => {
     console.error('Error updating content status profile:', error);
     return { success: false, error: error.message };
   }
+};
+
+export const getContentItems = async (workspaceId, filters = {}) => {
+  try {
+    const snapshot = await getDocs(query(collection(db, COLLECTIONS.contentItems(workspaceId)), orderBy('createdAt', 'desc')));
+    let items = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+    const { search = '', contentType = 'all', platform = 'all', status = 'all', from = '', to = '', offset = 0, limit = 20 } = filters;
+    const term = search.trim().toLowerCase();
+    items = items.filter((item) => {
+      const text = String(item.content || item.prompt || '').toLowerCase();
+      const created = item.createdAt?.toDate?.() || new Date(item.createdAt || 0);
+      return (!term || text.includes(term)) && (contentType === 'all' || item.contentType === contentType) && (platform === 'all' || item.platform === platform) && (status === 'all' || item.status === status) && (!from || created >= new Date(`${from}T00:00:00`)) && (!to || created <= new Date(`${to}T23:59:59.999`));
+    });
+    return { success: true, content: items.slice(offset, offset + limit), total: items.length, hasMore: offset + limit < items.length };
+  } catch (error) { return { success: false, error: error.message, content: [], total: 0, hasMore: false }; }
+};
+
+export const deleteContentItem = async (workspaceId, contentId) => {
+  try { await deleteDoc(doc(db, COLLECTIONS.contentItems(workspaceId), contentId)); return { success: true }; }
+  catch (error) { return { success: false, error: error.message }; }
+};
+
+export const updateContentItem = async (workspaceId, contentId, updates) => {
+  try { await updateDoc(doc(db, COLLECTIONS.contentItems(workspaceId), contentId), { ...updates, updatedAt: new Date().toISOString() }); return { success: true }; }
+  catch (error) { return { success: false, error: error.message }; }
 };

@@ -1,7 +1,7 @@
 // ContentGenerator.jsx
 
 import { useState, useEffect, useRef } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { generateContent, conductResearch } from '../../services/aiService.js';
 import { getBrandProfile } from '../../services/brandService.js';
@@ -133,6 +133,7 @@ function ContentGenerator() {
   const [sidebarOpen, setSidebarOpen]     = useState(false);
   const { currentUser }                   = useAuth();
   const { workspaceId }                   = useParams();
+  const location                          = useLocation();
   const [brandProfile, setBrandProfile]   = useState(null);
   const [brandLoading, setBrandLoading]   = useState(true);
   const [connectedAccounts, setConnectedAccounts] = useState([]);
@@ -160,6 +161,22 @@ function ContentGenerator() {
   // Selected accounts to post to
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   const [postResults,      setPostResults]      = useState([]);
+
+  useEffect(() => {
+    const item = location.state?.editContentItem;
+    if (!item) return;
+    const content = String(item.selectedVariant || item.content || '');
+    setFormData((current) => ({
+      ...current,
+      prompt: item.prompt || current.prompt,
+      contentType: item.contentType || current.contentType,
+      platform: item.platform || current.platform,
+    }));
+    setVariants(Array.isArray(item.variants) && item.variants.length ? item.variants : [content]);
+    setSelectedVariant(0);
+    setEditorContent(content);
+    setSavedImageUrl(item.imageUrl || null);
+  }, [location.state]);
 
   // Ref tracking to verify component state mounts safely across concurrent async flows
   const isMounted = useRef(true);

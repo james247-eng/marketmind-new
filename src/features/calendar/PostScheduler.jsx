@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../services/firebase.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -37,6 +37,8 @@ const validateJob = ({ platform, content, mediaUrl }) => {
 function PostScheduler() {
   const { currentUser } = useAuth();
   const { workspaceId } = useParams();
+  const location = useLocation();
+  const preloadHandled = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contentItems, setContentItems] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -70,7 +72,14 @@ function PostScheduler() {
         getScheduledPosts(workspaceId),
         getConnectedAccounts(currentUser.uid, workspaceId),
       ]);
-      setContentItems(contentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+      const loadedItems = contentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+      setContentItems(loadedItems);
+      const preloadId = location.state?.preloadContentItemId;
+      if (preloadId && !preloadHandled.current && loadedItems.some((item) => item.id === preloadId)) {
+        setSelectedIds([preloadId]);
+        setConfigs({ [preloadId]: emptyConfig() });
+        preloadHandled.current = true;
+      }
       if (!scheduledResult.success) throw new Error(scheduledResult.error);
       setJobs(scheduledResult.posts);
       if (accountsResult.success) setConnectedPlatforms([...new Set((accountsResult.accounts || []).map((item) => item.platform))]);
@@ -79,7 +88,7 @@ function PostScheduler() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser, workspaceId]);
+  }, [currentUser, location.state, workspaceId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
