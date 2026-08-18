@@ -4,10 +4,10 @@
 const https = require('https');
 
 // ─── Groq API call ────────────────────────────────────────────────────────────
-
 const GROQ_MODELS = [
-  'moonshotai/kimi-k2-instruct',
-  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'openai/gpt-oss-20b',
+  'openai/gpt-oss-120b',
+  'llama-3.1-8b-instant',
 ];
 
 const requestGroq = (model, systemPrompt, userPrompt, maxTokens, conversationMessages = null) => {
