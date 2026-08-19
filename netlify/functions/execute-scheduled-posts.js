@@ -1,12 +1,7 @@
-const admin = require('firebase-admin');
+const admin = require('./lib/firebaseAdmin');
 const { decryptToken } = require('./lib/tokenEncryption');
 const { publishToPlatform } = require('./lib/platformAdapters');
 const COLLECTIONS = require('./lib/schema.cjs');
-
-if (!admin.apps.length) {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-}
 
 const firestore = admin.firestore();
 const MAX_ATTEMPTS = 3;

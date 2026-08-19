@@ -1,9 +1,8 @@
-const admin = require('firebase-admin');
+const admin = require('./lib/firebaseAdmin');
 const { decryptToken } = require('./lib/tokenEncryption');
 const { publishToPlatform } = require('./lib/platformAdapters');
 const COLLECTIONS = require('./lib/schema.cjs');
 
-if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.applicationDefault() });
 const db = admin.firestore();
 const CORS = { 'Access-Control-Allow-Origin': process.env.ALLOWED_ORIGIN || 'https://marketmind-02.netlify.app', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Content-Type': 'application/json' };
 

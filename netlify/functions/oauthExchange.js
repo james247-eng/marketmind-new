@@ -3,13 +3,10 @@
 // Keeps client-facing authentication modular and clear.
 
 const axios = require('axios');
-const admin = require('firebase-admin');
+const admin = require('./lib/firebaseAdmin');
 const { encryptToken } = require('./lib/tokenEncryption');
 const COLLECTIONS = require('./lib/schema.cjs');
 
-if (!admin.apps.length) {
-  admin.initializeApp({ credential: admin.credential.applicationDefault() });
-}
 const db = admin.firestore();
 
 const CORS = {
