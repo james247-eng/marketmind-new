@@ -109,7 +109,7 @@ export const disconnectSocialAccount = async (workspaceId, accountDocId) => {
 const oauthState = (platform, workspaceId) => encodeURIComponent(`${platform}:${workspaceId}`);
 
 export const connectFacebook = (workspaceId, platform = 'facebook') => {
-  const fbAppId = '406853755355605'; 
+  const fbAppId = '1324732446336509'; 
   const scope = 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,pages_show_list';
   const url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&state=${oauthState(platform, workspaceId)}`;
   window.location.href = url;
